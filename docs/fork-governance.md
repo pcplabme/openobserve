@@ -391,8 +391,9 @@ License
 Corresponding Source location
 ```
 
-Create and validate an annotated tag only after the sync/feature PR is merged
-and the release commit passes required checks:
+Create and validate an annotated tag locally only after the sync/feature PR is
+merged and the release commit passes required checks. Do not push the immutable
+tag until the version and provenance manifest validate successfully:
 
 ```bash
 git switch main
@@ -400,15 +401,18 @@ git pull --ff-only origin main
 
 release=v0.93.0-patcharp.1
 git tag -a "$release" -m "Patcharp OpenObserve $release"
-git push origin "$release"
 
-BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  scripts/fork-release-metadata.sh "$release" > fork-release-metadata.json
+metadata_file=$(mktemp)
+trap 'rm -f "$metadata_file"' EXIT
+scripts/fork-release-metadata.sh "$release" > "$metadata_file" &&
+  jq -e . "$metadata_file" >/dev/null &&
+  git push origin "$release"
 ```
 
-The build job must generate the manifest using the artifact's actual build
-timestamp and retain it beside checksums and source for the same immutable tag.
-Do not retag a failed release; increment the Patcharp revision. Issue #10 still
+The local manifest is pre-push validation evidence, not the release artifact.
+The build job must regenerate it using the artifact's actual build timestamp and
+retain it beside checksums and source for the same immutable tag. Do not retag a
+failed release; increment the Patcharp revision. Issue #10 still
 must wire this manifest into release artifacts and the product's prominent
 About/Legal/Source mechanism, define historical source retention/access, and
 complete legal review. Preserve `LICENSE` and all upstream notices. Do not copy,

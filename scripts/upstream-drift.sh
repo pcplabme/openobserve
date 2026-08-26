@@ -59,10 +59,13 @@ trap 'rm -rf "$tmp_dir"' EXIT
 
 git diff --name-only "$base_sha" "$latest_sha" | sort -u >"$tmp_dir/upstream-files"
 git diff --name-only --diff-filter=BCDMRTUX "$base_sha" HEAD | sort -u >"$tmp_dir/fork-modified-files"
+git diff --name-only --diff-filter=A "$base_sha" HEAD | sort -u >"$tmp_dir/fork-added-files"
 comm -12 "$tmp_dir/upstream-files" "$tmp_dir/fork-modified-files" >"$tmp_dir/overlap-files"
+comm -12 "$tmp_dir/upstream-files" "$tmp_dir/fork-added-files" >"$tmp_dir/add-add-collision-files"
 
 changed_count=$(awk 'NF { count++ } END { print count + 0 }' "$tmp_dir/upstream-files")
 overlap_count=$(awk 'NF { count++ } END { print count + 0 }' "$tmp_dir/overlap-files")
+add_add_collision_count=$(awk 'NF { count++ } END { print count + 0 }' "$tmp_dir/add-add-collision-files")
 migration_count=$(awk '/^src\/infra\/src\/table\/migration\// { count++ } END { print count + 0 }' "$tmp_dir/upstream-files")
 dependency_count=$(awk '
   /(^|\/)(Cargo\.toml|Cargo\.lock|package\.json|package-lock\.json|deny\.toml)$/ { count++ }
@@ -113,10 +116,16 @@ printf '  - Database migration/schema files changed: %s\n' "$migration_count"
 printf '  - Dependency manifests/locks changed: %s\n' "$dependency_count"
 printf '  - Workflow files changed: %s\n' "$workflow_count"
 printf '  - Upstream changes overlapping persistent fork edits: %s\n' "$overlap_count"
+printf '  - Potential add/add collisions with fork-added files: %s\n' "$add_add_collision_count"
 
 if (( overlap_count > 0 )); then
   printf '\nOverlapping files (likely conflict/retest hotspots):\n'
   sed 's/^/  - /' "$tmp_dir/overlap-files"
+fi
+
+if (( add_add_collision_count > 0 )); then
+  printf '\nPotential add/add collision files:\n'
+  sed 's/^/  - /' "$tmp_dir/add-add-collision-files"
 fi
 
 printf '\nAutomation has not merged or modified any branch. A maintainer must decide whether to sync.\n'
