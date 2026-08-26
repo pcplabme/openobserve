@@ -1,0 +1,237 @@
+name: PCPLAB PR
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcplab-pr-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pcplab_pr_scope:
+    name: pcplab_pr_scope
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+      database: ${{ steps.changes.outputs.database }}
+      api_spec: ${{ steps.changes.outputs.api_spec }}
+      base_sha: ${{ steps.changes.outputs.base_sha }}
+      head_sha: ${{ steps.changes.outputs.head_sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed files
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            BASE_SHA="${HEAD_SHA}^"
+          fi
+          echo "base_sha=$BASE_SHA" >>"$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >>"$GITHUB_OUTPUT"
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          classify() {
+            local expression=$1
+            if [ -z "$changed" ] || grep -Eq "$expression" <<<"$changed"; then
+              printf 'true'
+            else
+              printf 'false'
+            fi
+          }
+          echo "backend=$(classify '^(src/|proto/|\.cargo/|Cargo\.(toml|lock)$|build\.rs$|rust-toolchain\.toml$)')" >>"$GITHUB_OUTPUT"
+          echo "frontend=$(classify '^web/')" >>"$GITHUB_OUTPUT"
+          echo "database=$(classify '^(src/infra/src/table/migration/|src/config/src/config\.rs$)')" >>"$GITHUB_OUTPUT"
+          echo "api_spec=$(classify '^(tests/ui-testing/playwright-tests/.*\.spec\.js$|tests/ui-testing/scripts/classify-specs\.js$|src/api/)')" >>"$GITHUB_OUTPUT"
+          printf '%s\n' "$changed" >>"$GITHUB_STEP_SUMMARY"
+
+  pcplab_pr_fork_delta:
+    name: pcplab_pr_fork_delta
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Report fork delta
+        run: scripts/fork-delta.sh --details >>"$GITHUB_STEP_SUMMARY"
+
+  pcplab_pr_backend:
+    name: pcplab_pr_backend
+    needs: [pcplab_pr_scope]
+    if: needs.pcplab_pr_scope.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: pcplab-pr
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install protobuf compiler
+        run: bash ./.github/protoc.sh
+
+      - name: Prepare backend-only frontend artifact
+        run: mkdir -p web/dist && touch web/dist/index.html
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check Rust workspace
+        run: cargo check --workspace --all-targets
+
+      - name: Lint Rust workspace
+        run: >-
+          cargo clippy --workspace --all-targets --
+          -W clippy::too_many_lines
+          -W clippy::cognitive_complexity
+          -W clippy::excessive_nesting
+          -D warnings
+
+      - name: Run Rust unit tests
+        run: cargo test --workspace --lib
+
+  pcplab_pr_frontend:
+    name: pcplab_pr_frontend
+    needs: [pcplab_pr_scope]
+    if: needs.pcplab_pr_scope.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Lint frontend
+        run: npm run lint:ci
+
+      - name: Type-check frontend
+        run: npm run type-check:app
+
+      - name: Run frontend unit tests
+        run: npm run test:unit -- --run
+
+  pcplab_pr_database:
+    name: pcplab_pr_database
+    needs: [pcplab_pr_scope]
+    if: needs.pcplab_pr_scope.outputs.database == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Guard database schema version
+        env:
+          BASE_SHA: ${{ needs.pcplab_pr_scope.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.pcplab_pr_scope.outputs.head_sha }}
+        run: bash .github/scripts/check-db-schema-version.sh "$BASE_SHA" "$HEAD_SHA"
+
+  pcplab_pr_api_spec:
+    name: pcplab_pr_api_spec
+    needs: [pcplab_pr_scope]
+    if: needs.pcplab_pr_scope.outputs.api_spec == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Guard pure API Playwright specifications
+        env:
+          BASE_SHA: ${{ needs.pcplab_pr_scope.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.pcplab_pr_scope.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          if ! git diff --name-only --diff-filter=AR "$BASE_SHA" "$HEAD_SHA" \
+            -- tests/ui-testing/playwright-tests/ >added-specs.txt; then
+            echo "::error::Unable to classify added Playwright specifications"
+            exit 1
+          fi
+          mapfile -t files <added-specs.txt
+          if [ "${#files[@]}" -gt 0 ]; then
+            node tests/ui-testing/scripts/classify-specs.js --check "${files[@]}"
+          fi
+
+  pcplab_pr_gate:
+    name: pcplab_pr_gate
+    runs-on: ubuntu-latest
+    permissions: {}
+    needs:
+      - pcplab_pr_scope
+      - pcplab_pr_fork_delta
+      - pcplab_pr_backend
+      - pcplab_pr_frontend
+      - pcplab_pr_database
+      - pcplab_pr_api_spec
+    if: always()
+    steps:
+      - name: Aggregate PR results
+        env:
+          SCOPE_RESULT: ${{ needs.pcplab_pr_scope.result }}
+          FORK_DELTA_RESULT: ${{ needs.pcplab_pr_fork_delta.result }}
+          BACKEND_REQUIRED: ${{ needs.pcplab_pr_scope.outputs.backend }}
+          BACKEND_RESULT: ${{ needs.pcplab_pr_backend.result }}
+          FRONTEND_REQUIRED: ${{ needs.pcplab_pr_scope.outputs.frontend }}
+          FRONTEND_RESULT: ${{ needs.pcplab_pr_frontend.result }}
+          DATABASE_REQUIRED: ${{ needs.pcplab_pr_scope.outputs.database }}
+          DATABASE_RESULT: ${{ needs.pcplab_pr_database.result }}
+          API_SPEC_REQUIRED: ${{ needs.pcplab_pr_scope.outputs.api_spec }}
+          API_SPEC_RESULT: ${{ needs.pcplab_pr_api_spec.result }}
+        run: |
+          set -euo pipefail
+          [ "$SCOPE_RESULT" = success ] || { echo "::error::scope result: $SCOPE_RESULT"; exit 1; }
+          [ "$FORK_DELTA_RESULT" = success ] || { echo "::error::fork delta result: $FORK_DELTA_RESULT"; exit 1; }
+          failed=0
+          for entry in \
+            "backend:$BACKEND_REQUIRED:$BACKEND_RESULT" \
+            "frontend:$FRONTEND_REQUIRED:$FRONTEND_RESULT" \
+            "database:$DATABASE_REQUIRED:$DATABASE_RESULT" \
+            "api-spec:$API_SPEC_REQUIRED:$API_SPEC_RESULT"; do
+            name=${entry%%:*}
+            values=${entry#*:}
+            required=${values%%:*}
+            result=${values#*:}
+            if [ "$required" = true ] && [ "$result" != success ]; then
+              echo "::error::$name was required but result was '$result'"
+              failed=1
+            elif [ "$required" != true ] && [ "$result" != success ] && [ "$result" != skipped ]; then
+              echo "::error::$name was not required but failed with '$result'"
+              failed=1
+            fi
+          done
+          exit "$failed"

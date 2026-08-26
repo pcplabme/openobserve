@@ -1,0 +1,347 @@
+name: PCPLAB release
+
+on:
+  push:
+    tags: ["v*-pcplab.*"]
+
+permissions:
+  checks: read
+  contents: read
+
+concurrency:
+  group: pcplab-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPOSITORY: patcharp/openobserve
+
+jobs:
+  pcplab_release_gate:
+    name: pcplab_release_gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release-dockerhub
+    outputs:
+      tag_sha: ${{ steps.release.outputs.tag_sha }}
+      version: ${{ steps.release.outputs.version }}
+      labels: ${{ steps.labels.outputs.labels }}
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Fetch release ancestry and upstream provenance
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git remote add upstream https://github.com/openobserve/openobserve.git
+          git fetch --no-tags upstream +refs/heads/main:refs/remotes/upstream/main
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Login to Docker Hub for immutable-tag validation
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Validate tag, provenance, checks, and immutability
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          [ "$(git cat-file -t "refs/tags/$RELEASE_TAG")" = tag ] || {
+            echo "::error::PCPLAB releases require an annotated Git tag"
+            exit 1
+          }
+          tag_sha=$(git rev-parse "${RELEASE_TAG}^{commit}")
+          git merge-base --is-ancestor "$tag_sha" origin/main || {
+            echo "::error::Release tag is not on reviewed main history"
+            exit 1
+          }
+          BUILD_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+            scripts/fork-release-metadata.sh "$RELEASE_TAG" >provenance.json
+          jq -e . provenance.json >/dev/null
+          required=(pcplab_pr_gate pcplab_contract_tests)
+          checks=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag_sha/check-runs?per_page=100" --paginate --slurp)
+          for context in "${required[@]}"; do
+            conclusion=$(jq -r --arg context "$context" \
+              '[.[].check_runs[] | select(.name == $context and .app.slug == "github-actions")] | sort_by(.id) | last | .conclusion // "missing"' \
+              <<<"$checks")
+            [ "$conclusion" = success ] || {
+              echo "::error::Required check $context on $tag_sha was '$conclusion'"
+              exit 1
+            }
+          done
+          version=${RELEASE_TAG#v}
+          set +e
+          lookup=$(docker buildx imagetools inspect "docker.io/$IMAGE_REPOSITORY:$version" 2>&1)
+          lookup_status=$?
+          set -e
+          if [ "$lookup_status" -eq 0 ]; then
+            echo "::error::Immutable Docker tag already exists: $version"
+            exit 1
+          elif ! grep -Eqi 'manifest unknown|not found|no such manifest' <<<"$lookup"; then
+            echo "::error::Docker Hub immutability lookup failed closed: $lookup"
+            exit 1
+          fi
+          echo "tag_sha=$tag_sha" >>"$GITHUB_OUTPUT"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+      - name: Prepare OCI labels
+        id: labels
+        run: |
+          set -euo pipefail
+          {
+            echo 'labels<<PCPLAB_LABELS'
+            echo 'org.opencontainers.image.title=openobserve'
+            echo 'org.opencontainers.image.source=https://github.com/pcplabme/openobserve'
+            echo "org.opencontainers.image.revision=$(jq -r .fork_sha provenance.json)"
+            echo "org.opencontainers.image.version=$(jq -r .company_release provenance.json | sed 's/^v//')"
+            echo "org.opencontainers.image.created=$(jq -r .build_timestamp provenance.json)"
+            echo 'org.opencontainers.image.licenses=AGPL-3.0'
+            echo 'org.opencontainers.image.vendor=PCPLAB'
+            echo "ai.pcplab.release=$(jq -r .company_release provenance.json)"
+            echo "ai.pcplab.fork.sha=$(jq -r .fork_sha provenance.json)"
+            echo "ai.pcplab.upstream.source_version=$(jq -r .upstream_source_version provenance.json)"
+            echo "ai.pcplab.upstream.base_sha=$(jq -r .upstream_base_sha provenance.json)"
+            echo "ai.pcplab.upstream.base_type=$(jq -r .upstream_base_type provenance.json)"
+            echo "ai.pcplab.upstream.security_patch_shas=$(jq -r .upstream_security_patch_shas provenance.json)"
+            echo 'PCPLAB_LABELS'
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Upload provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pcplab-release-provenance
+          path: provenance.json
+          if-no-files-found: error
+          retention-days: 90
+
+  pcplab_release_image:
+    name: pcplab_release_image_${{ matrix.arch }}
+    needs: [pcplab_release_gate]
+    environment: release-dockerhub
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+            dockerfile: deploy/build/Dockerfile.tag.amd64
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            dockerfile: deploy/build/Dockerfile.tag.aarch64
+    steps:
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+      - name: Checkout validated source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ needs.pcplab_release_gate.outputs.tag_sha }}
+
+      - name: Download provenance
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pcplab-release-provenance
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push untagged candidate by digest
+        id: push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ needs.pcplab_release_gate.outputs.labels }}
+          outputs: type=image,name=docker.io/${{ env.IMAGE_REPOSITORY }},push-by-digest=true,name-canonical=true,push=true
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=pcplab-release-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=pcplab-release-${{ matrix.arch }}
+
+      - name: Pull exact candidate digest for validation
+        env:
+          ARCH: ${{ matrix.arch }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker pull "docker.io/$IMAGE_REPOSITORY@$DIGEST"
+          docker tag "docker.io/$IMAGE_REPOSITORY@$DIGEST" pcplab-smoke:"$ARCH"
+
+      - name: Verify provenance labels
+        env:
+          ARCH: ${{ matrix.arch }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          TAG_SHA: ${{ needs.pcplab_release_gate.outputs.tag_sha }}
+        run: |
+          set -euo pipefail
+          docker inspect pcplab-smoke:"$ARCH" >image-inspect.json
+          jq -e --arg release "$RELEASE_TAG" --arg sha "$TAG_SHA" \
+            '.[0].Config.Labels["ai.pcplab.release"] == $release and .[0].Config.Labels["org.opencontainers.image.revision"] == $sha' \
+            image-inspect.json >/dev/null
+
+      - name: Smoke-test produced image
+        env:
+          ARCH: ${{ matrix.arch }}
+          ZO_ROOT_USER_EMAIL: root@example.com
+          ZO_ROOT_USER_PASSWORD: Complexpass#123
+        run: |
+          set -euo pipefail
+          docker run -d --name pcplab-release-smoke -p 5080:5080 \
+            -e ZO_ROOT_USER_EMAIL \
+            -e ZO_ROOT_USER_PASSWORD \
+            -e ZO_META_STORE=sqlite \
+            -e ZO_DATA_DIR=/data \
+            -e ZO_TEXT_DATA_TYPE=text \
+            -e ZO_INGEST_ALLOWED_UPTO=100000 \
+            -e ZO_CREATE_ORG_THROUGH_INGESTION=true \
+            -e ZO_SSRF_ALLOW_LOOPBACK=true \
+            -e ZO_USAGE_REPORTING_ENABLED=false \
+            -e ZO_MEM_PERSIST_INTERVAL=1 \
+            -e ZO_MAX_FILE_RETENTION_TIME=1 \
+            -e ZO_FILE_PUSH_INTERVAL=1 \
+            pcplab-smoke:"$ARCH"
+          bash scripts/pcplab-product-smoke.sh
+          [ "$(docker inspect -f '{{.State.Running}}' pcplab-release-smoke)" = true ]
+
+      - name: Capture smoke diagnostics
+        if: always()
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          if docker inspect pcplab-release-smoke >/dev/null 2>&1; then
+            docker logs pcplab-release-smoke >"smoke-${ARCH}.log" 2>&1 || true
+            docker rm -f pcplab-release-smoke >/dev/null 2>&1 || true
+          else
+            echo "container was not created" >"smoke-${ARCH}.log"
+          fi
+
+      - name: Generate image SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: pcplab-smoke:${{ matrix.arch }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.arch }}.spdx.json
+          upload-artifact: false
+
+      - name: Scan image vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: pcplab-smoke:${{ matrix.arch }}
+          format: sarif
+          output: trivy-${{ matrix.arch }}.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Record image digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir -p digests
+          touch "digests/${DIGEST#sha256:}"
+
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pcplab-release-${{ matrix.arch }}
+          path: |
+            digests
+            smoke-${{ matrix.arch }}.log
+            sbom-${{ matrix.arch }}.spdx.json
+            trivy-${{ matrix.arch }}.sarif
+          if-no-files-found: warn
+          retention-days: 90
+
+  pcplab_release_publish:
+    name: pcplab_release_publish
+    needs: [pcplab_release_gate, pcplab_release_image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release-dockerhub
+    steps:
+      - name: Download architecture evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: pcplab-release-*
+          path: release-evidence
+          merge-multiple: true
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Publish immutable multi-architecture manifest
+        env:
+          VERSION: ${{ needs.pcplab_release_gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          mapfile -t digest_files < <(find release-evidence -path '*/digests/*' -type f | sort)
+          [ "${#digest_files[@]}" -eq 2 ] || {
+            echo "::error::Expected two architecture digests, found ${#digest_files[@]}"
+            exit 1
+          }
+          declare -A source_by_arch=()
+          for file in "${digest_files[@]}"; do
+            source="docker.io/$IMAGE_REPOSITORY@sha256:$(basename "$file")"
+            raw=$(docker buildx imagetools inspect "$source" --raw)
+            for arch in amd64 arm64; do
+              if jq -e --arg arch "$arch" \
+                '[.manifests[]? | select(.platform.os == "linux" and .platform.architecture == $arch)] | length == 1' \
+                <<<"$raw" >/dev/null; then
+                [ -z "${source_by_arch[$arch]:-}" ] || {
+                  echo "::error::More than one validated source claims linux/$arch"
+                  exit 1
+                }
+                source_by_arch[$arch]=$source
+              fi
+            done
+          done
+          [ -n "${source_by_arch[amd64]:-}" ] && [ -n "${source_by_arch[arm64]:-}" ] || {
+            echo "::error::Candidate digests do not contain exactly one linux/amd64 and one linux/arm64 image"
+            exit 1
+          }
+          set +e
+          lookup=$(docker buildx imagetools inspect "docker.io/$IMAGE_REPOSITORY:$VERSION" 2>&1)
+          lookup_status=$?
+          set -e
+          if [ "$lookup_status" -eq 0 ]; then
+            echo "::error::Immutable Docker tag already exists at publish time: $VERSION"
+            exit 1
+          elif ! grep -Eqi 'manifest unknown|not found|no such manifest' <<<"$lookup"; then
+            echo "::error::Docker Hub immutability recheck failed closed: $lookup"
+            exit 1
+          fi
+          # This is intentionally the final command: all source/platform and
+          # immutability validation completes before the production tag exists.
+          docker buildx imagetools create \
+            -t "docker.io/$IMAGE_REPOSITORY:$VERSION" \
+            "${source_by_arch[amd64]}" "${source_by_arch[arm64]}"

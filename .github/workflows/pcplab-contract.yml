@@ -1,0 +1,73 @@
+name: PCPLAB contract
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcplab-contract-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pcplab_contract_run:
+    name: pcplab_contract_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Run PCPLAB contracts
+        run: bash scripts/pcplab-contract.sh
+
+  pcplab_contract_regression:
+    name: PCPLAB regression
+    if: >-
+      github.event_name != 'pull_request' ||
+      startsWith(github.head_ref, 'sync/upstream-') ||
+      startsWith(github.head_ref, 'sync/security-')
+    uses: ./.github/workflows/pcplab-regression.yml
+
+  pcplab_contract_security:
+    name: PCPLAB security
+    uses: ./.github/workflows/pcplab-security.yml
+
+  pcplab_contract_tests:
+    name: pcplab_contract_tests
+    runs-on: ubuntu-latest
+    permissions: {}
+    needs:
+      - pcplab_contract_run
+      - pcplab_contract_regression
+      - pcplab_contract_security
+    if: always()
+    steps:
+      - name: Aggregate contract results
+        env:
+          CONTRACT_RESULT: ${{ needs.pcplab_contract_run.result }}
+          REGRESSION_RESULT: ${{ needs.pcplab_contract_regression.result }}
+          SECURITY_RESULT: ${{ needs.pcplab_contract_security.result }}
+        run: |
+          set -euo pipefail
+          if [ "$CONTRACT_RESULT" != "success" ]; then
+            echo "::error::PCPLAB contract run was '$CONTRACT_RESULT'"
+            exit 1
+          fi
+          if [ "$REGRESSION_RESULT" != "success" ] && [ "$REGRESSION_RESULT" != "skipped" ]; then
+            echo "::error::PCPLAB regression was '$REGRESSION_RESULT'"
+            exit 1
+          fi
+          if [ "$SECURITY_RESULT" != "success" ]; then
+            echo "::error::PCPLAB security was '$SECURITY_RESULT'"
+            exit 1
+          fi
+          echo "PCPLAB contracts passed"

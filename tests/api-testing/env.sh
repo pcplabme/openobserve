@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to extract environment variables from .github/workflows/api-testing.yml
+# Script to extract shared environment variables from PCPLAB regression CI
 # and export them to the local environment
 #
 # Usage:
@@ -8,7 +8,7 @@
 #   ./env.sh               # Execute to see what would be exported
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKFLOW_FILE="${SCRIPT_DIR}/../../.github/workflows/api-testing.yml"
+WORKFLOW_FILE="${SCRIPT_DIR}/../../.github/workflows/pcplab-regression.yml"
 
 if [ ! -f "$WORKFLOW_FILE" ]; then
     echo "Error: Workflow file not found at $WORKFLOW_FILE" >&2

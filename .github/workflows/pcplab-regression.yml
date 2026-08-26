@@ -1,0 +1,286 @@
+name: PCPLAB regression
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcplab-regression-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  ZO_ROOT_USER_EMAIL: root@example.com
+  ZO_ROOT_USER_PASSWORD: Complexpass#123
+  ZO_BASE_URL: http://localhost:5080/
+  ZO_BASE_URL_SC: http://localhost:5080/
+  WS_ZO_BASE_URL: ws://localhost:5080/
+  ZO_INTERNAL_GRPC_TOKEN: pcplab-regression-token
+  ZO_TEXT_DATA_TYPE: text
+  ZO_INGEST_ALLOWED_UPTO: "48"
+  ZO_CREATE_ORG_THROUGH_INGESTION: "true"
+  ZO_SSRF_ALLOW_LOOPBACK: "true"
+  ZO_USAGE_REPORTING_ENABLED: "false"
+  ZO_MEM_PERSIST_INTERVAL: "1"
+  ZO_MAX_FILE_RETENTION_TIME: "1"
+  ZO_FILE_PUSH_INTERVAL: "1"
+
+jobs:
+  pcplab_regression_build:
+    name: pcplab_regression_build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: pcplab-regression
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install protobuf compiler
+        run: bash ./.github/protoc.sh
+
+      - name: Prepare backend-only frontend artifact
+        run: mkdir -p web/dist && touch web/dist/index.html
+
+      - name: Build OpenObserve
+        run: cargo build --profile release-ci --features mimalloc
+
+      - name: Upload OpenObserve binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pcplab-regression-binary
+          path: target/release-ci/openobserve
+          if-no-files-found: error
+          retention-days: 1
+
+  pcplab_regression_core:
+    name: pcplab_regression_core
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CARGO_INCREMENTAL: "0"
+      ZO_META_STORE: sqlite
+      ZO_DATA_DIR: /tmp/openobserve-core
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: pcplab-regression
+          save-if: false
+
+      - name: Install protobuf compiler
+        run: bash ./.github/protoc.sh
+
+      - name: Prepare backend-only frontend artifact
+        run: mkdir -p web/dist && touch web/dist/index.html
+
+      - name: Run SQLite workspace tests
+        run: cargo test --workspace --lib
+
+  pcplab_regression_database:
+    name: pcplab_regression_database
+    needs: [pcplab_regression_build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17.5-alpine3.22
+        env:
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      ZO_META_STORE: postgres
+      ZO_META_POSTGRES_DSN: postgres://postgres:password@localhost:5432/postgres
+      ZO_DATA_DIR: /tmp/openobserve-postgres
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Download OpenObserve binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pcplab-regression-binary
+          path: target/release-ci
+
+      - name: Setup Python
+        id: python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.11.6
+
+      - name: Setup Rye
+        uses: eifinger/setup-rye@c694239a43768373e87d0103d7f547027a23f3c8 # v4.2.9
+        env:
+          RYE_TOOLCHAIN: ${{ steps.python.outputs.python-path }}
+        with:
+          enable-cache: false
+          working-directory: tests/db-testing
+          version: 0.27.0
+
+      - name: Install database test dependencies
+        working-directory: tests/db-testing
+        run: |
+          rye pin cpython@3.11.6
+          rye sync
+
+      - name: Start OpenObserve with PostgreSQL
+        run: |
+          chmod +x target/release-ci/openobserve
+          target/release-ci/openobserve >pcplab-postgres.log 2>&1 &
+          echo "SERVER_PID=$!" >>"$GITHUB_ENV"
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:5080/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::OpenObserve did not become healthy with PostgreSQL"
+          exit 10
+
+      - name: Run PostgreSQL validation tests
+        working-directory: tests/db-testing
+        run: rye run pytest -v --tb=short --junitxml=postgres-junit.xml
+
+      - name: Stop OpenObserve
+        if: always()
+        run: |
+          if [ -n "${SERVER_PID:-}" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+            kill "$SERVER_PID"
+          fi
+
+      - name: Upload database diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pcplab-regression-database
+          path: |
+            pcplab-postgres.log
+            tests/db-testing/postgres-junit.xml
+          if-no-files-found: warn
+          retention-days: 7
+
+  pcplab_regression_api:
+    name: pcplab_regression_api
+    needs: [pcplab_regression_build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ZO_META_STORE: sqlite
+      ZO_DATA_DIR: /tmp/openobserve-api
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Download OpenObserve binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pcplab-regression-binary
+          path: target/release-ci
+
+      - name: Setup Python
+        id: python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.11.6
+
+      - name: Setup Rye
+        uses: eifinger/setup-rye@c694239a43768373e87d0103d7f547027a23f3c8 # v4.2.9
+        env:
+          RYE_TOOLCHAIN: ${{ steps.python.outputs.python-path }}
+        with:
+          enable-cache: false
+          working-directory: tests/api-testing
+          version: 0.27.0
+
+      - name: Install API test dependencies
+        working-directory: tests/api-testing
+        run: |
+          rye pin cpython@3.11.6
+          rye sync
+
+      - name: Start OpenObserve with SQLite
+        run: |
+          chmod +x target/release-ci/openobserve
+          target/release-ci/openobserve >pcplab-api.log 2>&1 &
+          echo "SERVER_PID=$!" >>"$GITHUB_ENV"
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:5080/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::OpenObserve did not become healthy with SQLite"
+          exit 10
+
+      - name: Run API integration smoke tests
+        working-directory: tests/api-testing
+        run: rye run pytest tests/test_framework_selfcheck.py -m framework -v --tb=short --junitxml=api-junit.xml
+
+      - name: Run PCPLAB product contracts
+        run: bash scripts/pcplab-product-smoke.sh
+
+      - name: Stop OpenObserve
+        if: always()
+        run: |
+          if [ -n "${SERVER_PID:-}" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+            kill "$SERVER_PID"
+          fi
+
+      - name: Upload API diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pcplab-regression-api
+          path: |
+            pcplab-api.log
+            tests/api-testing/api-junit.xml
+          if-no-files-found: warn
+          retention-days: 7
+
+  pcplab_regression_tests:
+    name: pcplab_regression_tests
+    runs-on: ubuntu-latest
+    permissions: {}
+    needs:
+      - pcplab_regression_build
+      - pcplab_regression_core
+      - pcplab_regression_database
+      - pcplab_regression_api
+    if: always()
+    steps:
+      - name: Aggregate regression results
+        env:
+          BUILD_RESULT: ${{ needs.pcplab_regression_build.result }}
+          CORE_RESULT: ${{ needs.pcplab_regression_core.result }}
+          DATABASE_RESULT: ${{ needs.pcplab_regression_database.result }}
+          API_RESULT: ${{ needs.pcplab_regression_api.result }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for entry in "build:$BUILD_RESULT" "core:$CORE_RESULT" "database:$DATABASE_RESULT" "api:$API_RESULT"; do
+            name=${entry%%:*}
+            result=${entry#*:}
+            if [ "$result" != success ]; then
+              echo "::error::$name regression result was '$result'"
+              failed=1
+            fi
+          done
+          exit "$failed"

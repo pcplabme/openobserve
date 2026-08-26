@@ -46,5 +46,5 @@ For `sync/upstream-*` or `sync/security-*` PRs:
 - [ ] Upstream source version, exact SHA, and base type are recorded.
 - [ ] Migration and dependency diffs received explicit review.
 - [ ] Upstream compatibility checks passed.
-- [ ] Patcharp contract checks passed, or an approved emergency exception is documented.
+- [ ] PCPLAB contract checks passed, or an approved emergency exception is documented.
 - [ ] Rollback and post-sync/reconciliation notes are included.

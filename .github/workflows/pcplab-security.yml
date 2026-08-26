@@ -1,0 +1,167 @@
+name: PCPLAB security
+
+on:
+  workflow_call:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcplab-security-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pcplab_security_scope:
+    name: pcplab_security_scope
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.scope.outputs.rust }}
+      javascript: ${{ steps.scope.outputs.javascript }}
+      workflows: ${{ steps.scope.outputs.workflows }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Select security checks
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            changed=all
+          else
+            changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          fi
+          select_check() {
+            local expression=$1
+            if [ "$changed" = all ] || grep -Eq "$expression" <<<"$changed"; then
+              printf 'true'
+            else
+              printf 'false'
+            fi
+          }
+          echo "rust=$(select_check '(^|/)Cargo\.(toml|lock)$|^deny\.toml$|^rust-toolchain\.toml$')" >>"$GITHUB_OUTPUT"
+          echo "javascript=$(select_check '^web/package(-lock)?\.json$')" >>"$GITHUB_OUTPUT"
+          echo "workflows=$(select_check '^(\.github/workflows/|\.github/actions/|tests/pcplab/|scripts/(pcplab-|fork-delta\.sh$|fork-release-metadata\.sh$))')" >>"$GITHUB_OUTPUT"
+
+  pcplab_security_rust:
+    name: pcplab_security_rust
+    needs: [pcplab_security_scope]
+    if: needs.pcplab_security_scope.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
+        with:
+          tool: cargo-audit
+
+      - name: Audit Rust dependencies
+        run: cargo audit
+
+      - name: Check Rust dependencies and licenses
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+
+  pcplab_security_javascript:
+    name: pcplab_security_javascript
+    needs: [pcplab_security_scope]
+    if: needs.pcplab_security_scope.outputs.javascript == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=high
+
+      - name: Check production dependency licenses
+        run: >-
+          npm exec --yes --package=license-checker@25.0.1 -- license-checker
+          --production
+          --onlyAllow="MIT;ISC;Apache-2.0;BSD;BSD-2-Clause;BSD-3-Clause;MPL-2.0;Unlicense;CC0-1.0;CC-BY-4.0;Artistic-2.0;UNLICENSED;Python-2.0;BlueOak-1.0.0"
+
+  pcplab_security_workflows:
+    name: pcplab_security_workflows
+    needs: [pcplab_security_scope]
+    if: needs.pcplab_security_scope.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Verify action pins
+        env:
+          PCPLAB_VERIFY_PINS: "1"
+        run: bash tests/pcplab/action-pins.sh
+
+      - name: Verify workflow trust boundaries
+        run: bash tests/pcplab/workflow-trust.sh
+
+  pcplab_security_gate:
+    name: pcplab_security_gate
+    runs-on: ubuntu-latest
+    permissions: {}
+    needs:
+      - pcplab_security_scope
+      - pcplab_security_rust
+      - pcplab_security_javascript
+      - pcplab_security_workflows
+    if: always()
+    steps:
+      - name: Aggregate security results
+        env:
+          SCOPE_RESULT: ${{ needs.pcplab_security_scope.result }}
+          RUST_REQUIRED: ${{ needs.pcplab_security_scope.outputs.rust }}
+          RUST_RESULT: ${{ needs.pcplab_security_rust.result }}
+          JAVASCRIPT_REQUIRED: ${{ needs.pcplab_security_scope.outputs.javascript }}
+          JAVASCRIPT_RESULT: ${{ needs.pcplab_security_javascript.result }}
+          WORKFLOWS_REQUIRED: ${{ needs.pcplab_security_scope.outputs.workflows }}
+          WORKFLOWS_RESULT: ${{ needs.pcplab_security_workflows.result }}
+        run: |
+          set -euo pipefail
+          [ "$SCOPE_RESULT" = success ] || { echo "::error::scope result: $SCOPE_RESULT"; exit 1; }
+          failed=0
+          for entry in \
+            "rust:$RUST_REQUIRED:$RUST_RESULT" \
+            "javascript:$JAVASCRIPT_REQUIRED:$JAVASCRIPT_RESULT" \
+            "workflows:$WORKFLOWS_REQUIRED:$WORKFLOWS_RESULT"; do
+            name=${entry%%:*}
+            values=${entry#*:}
+            required=${values%%:*}
+            result=${values#*:}
+            if [ "$required" = true ] && [ "$result" != success ]; then
+              echo "::error::$name was required but result was '$result'"
+              failed=1
+            elif [ "$required" != true ] && [ "$result" != success ] && [ "$result" != skipped ]; then
+              echo "::error::$name failed with '$result'"
+              failed=1
+            fi
+          done
+          exit "$failed"

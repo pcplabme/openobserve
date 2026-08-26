@@ -41,8 +41,8 @@ Item order inside a file/module, top to bottom (clippy's default grouping):
 ## PR conventions
 
 - PR titles starting with `feat:` require `Design at: #xxx` as the FIRST line
-  of the description (enforced by `.github/workflows/feat-design-checker.yml`);
-  `fix:`/`chore:`/`test:` PRs skip the check.
+  of the description; `fix:`/`chore:`/`test:` PRs skip the convention. PCPLAB
+  does not retain the upstream automated design checker.
 
 ## Enterprise-gated code
 
