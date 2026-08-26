@@ -1,6 +1,8 @@
 name: Upstream drift
 
 on:
+  pull_request:
+    branches: [main]
   schedule:
     # A weekly report gives maintainers visibility while normal sync decisions remain biweekly.
     - cron: "23 2 * * 3"
@@ -10,12 +12,13 @@ permissions:
   contents: read
 
 jobs:
-  report:
+  upstream_drift_report:
     name: upstream_drift_report
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'sync/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout fork history
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
 
@@ -37,7 +40,7 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
 
       - name: Upload drift report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: upstream-drift-${{ github.run_id }}
           path: ${{ runner.temp }}/upstream-drift.txt

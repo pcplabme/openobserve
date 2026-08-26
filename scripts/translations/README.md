@@ -135,11 +135,13 @@ cd scripts/translations
 python3 main.py --check          # exits 2 if anything is pending, 0 if clean
 ```
 
-## GitHub Actions Workflow
+## Historical upstream GitHub Actions workflows
 
-There are two workflows, with different jobs.
+Patcharp removed both inherited workflow entrypoints in Issue #3. Their former
+behavior is retained below as upstream context for the scripts; neither job runs
+in Patcharp CI today.
 
-#### `update-translations.yml` — generates
+#### `update-translations.yml` — removed generator
 
 - **Trigger**: a pull request whose `web/src/locales/languages/en-US.json` differs from
   the base branch, on the `auto_merge_enabled` and `ready_for_review` types only — i.e.
@@ -152,7 +154,7 @@ There are two workflows, with different jobs.
   2. Updates all language JSON files
   3. Commits them onto the PR branch as `chore(i18n): update translations from en-US.json`
 
-#### `verify-translations.yml` — gates
+#### `verify-translations.yml` — removed gate
 
 - **Trigger**: every pull request *and* every `merge_group` entry. No `paths:` filter —
   a required check that gets filtered out sits at "Expected — waiting for status"
@@ -165,9 +167,10 @@ There are two workflows, with different jobs.
   mid-review). **In the merge queue it fails**, ejecting the entry rather than letting
   English-only strings reach `main`.
 
-> Make **Verify translations are up to date** a required status check on `main`.
-> Nothing about this design guarantees anything until you do — that is the single
-> configuration step this PR depends on.
+> Patcharp removed this inherited workflow entrypoint in Issue #3. The
+> translation checker remains available for local/manual use and may later be
+> added to `patcharp-pr.yml` for affected frontend paths; it is not currently a
+> required status check.
 
 ### Run lifecycle guarantees
 

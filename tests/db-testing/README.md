@@ -113,11 +113,12 @@ def test_my_validation(ingest_test_data, db_cursor, test_org, test_stream):
 
 ## CI Integration
 
-Tests run automatically in the `db-testing.yml` GitHub Actions workflow on:
-- Push to `main` branch
-- Pull requests to any branch
+Patcharp retains this upstream harness and runs it from the reusable
+`patcharp-regression.yml` workflow on upstream/security sync PRs, trusted
+`main`/merge lanes, and manual dispatch. It is not a standalone workflow on
+every pull request.
 
-The workflow:
+The Patcharp regression lane:
 1. Starts a PostgreSQL service
 2. Builds OpenObserve
 3. Configures OpenObserve to use Postgres

@@ -1,7 +1,9 @@
 # OpenObserve API Tests
 
-End-to-end pytest suite against the OpenObserve REST API. Runs in CI on every
-PR (`.github/workflows/api-testing.yml`); also runnable locally.
+End-to-end pytest suite against the OpenObserve REST API. Patcharp retains this
+upstream harness and runs a bounded framework/product slice through
+`.github/workflows/patcharp-regression.yml` on sync/trusted lanes; the complete
+suite remains runnable locally.
 
 ## Quick start
 

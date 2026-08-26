@@ -2,11 +2,14 @@
 
 ## Manifest index
 
-Each Playwright workflow builds its matrix from one of these JSON files (via a
-`generate_matrix` job). Shared workflows use an OSS **base** + an ENT **overlay**
-(`*.ent.json`, in the enterprise repo); ENT-only workflows use a standalone manifest.
+Upstream Playwright workflows build their matrices from these JSON files (via a
+`generate_matrix` job). Patcharp removed the inherited workflow entrypoints in
+Issue #3 but retains these manifests, builders, and fixtures for bounded
+full-regression expansion. Shared upstream workflows use an OSS **base** + an
+ENT **overlay** (`*.ent.json`, in the enterprise repo); ENT-only workflows use a
+standalone manifest.
 
-| Manifest | Drives workflow | Kind |
+| Manifest | Upstream workflow consumer | Kind |
 |---|---|---|
 | `ci_matrix.json` (+ ENT `ci_matrix.ent.json`) | `playwright.yml` (PR gate) | shared base + overlay |
 | `ci_matrix_regression.json` (+ ENT `ci_matrix_regression.ent.json`) | `playwright_regression.yml` | shared base + overlay |
@@ -24,9 +27,11 @@ from its OSS checkout).
 ## The shared PR-gate matrix (below refers to `ci_matrix.json`)
 
 `ci_matrix.json` (this directory) is the **only** place the Playwright UI shard list
-lives. Both the OSS and Enterprise `playwright.yml` workflows build their test matrix
-from it at run time via `.github/scripts/build-ci-matrix.js`, so a spec added here runs
-in **both** repos automatically — no more hand-syncing two workflow files.
+lives. The upstream OSS and Enterprise `playwright.yml` workflows build their
+test matrix from it at run time via `.github/scripts/build-ci-matrix.js`.
+Patcharp does not currently invoke that workflow automatically; use the retained
+builder/harness manually until an affected-path Patcharp regression lane adopts
+it.
 
 ## Adding / moving a spec
 

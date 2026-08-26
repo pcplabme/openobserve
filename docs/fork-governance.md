@@ -470,10 +470,7 @@ listed contexts have reported at least once on `main`:
         "do_not_enforce_on_create": false,
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
-          { "context": "unit_tests_summary" },
-          { "context": "db_schema_version_check" },
-          { "context": "db_tests_summary" },
-          { "context": "api_tests_summary" },
+          { "context": "patcharp_pr_gate" },
           { "context": "patcharp_contract_tests" }
         ]
       }
@@ -493,23 +490,24 @@ The field names and behavior follow GitHub's
 [repository rulesets REST API](https://docs.github.com/en/rest/repos/rules) and
 [available rules documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
 
-After #3 lands a stable aggregate job, require these non-conditional aggregate
-checks (confirm their emitted GitHub check names before saving the ruleset):
+After #3 lands, require only the compact company-owned aggregate checks below.
+Confirm the emitted names from a successful `main` run before saving the
+ruleset:
 
 ```text
-unit_tests_summary
-db_schema_version_check
-db_tests_summary
-api_tests_summary
-patcharp_contract_tests   # pending #3
+patcharp_pr_gate
+patcharp_contract_tests
 ```
 
-If existing aggregate checks are conditional or do not report for docs-only
-changes, fix their aggregation before making them required; a permanently
-pending check is not a governance control. GitHub cannot express different
-required checks solely from PR head prefixes in one `main` ruleset, so the
-`patcharp_contract_tests` workflow must enforce the stricter sync/security
-matrix internally.
+The PR aggregate owns changed-file checks, database schema guarding, API/spec
+guarding, and fork-delta reporting. The contract aggregate is the outer company
+gate: it owns Patcharp's static contracts, calls the reusable security workflow,
+and calls the full reusable regression matrix on sync/security PRs and trusted
+main/merge/manual lanes. It fails if a required called workflow fails.
+`patcharp-regression.yml` and `patcharp-security.yml` still publish diagnostic
+aggregate names, but the required outer contract check prevents their failures
+from being bypassed without permanently expanding the `main` ruleset. A
+permanently pending inherited check is not a governance control.
 
 Repository-admin configuration remains manual/pending: this PR cannot safely
 activate the ruleset before #3 supplies the company contract check and before
@@ -540,9 +538,8 @@ the actual check names have passed on `main` at least once.
 
 ## Known dependencies and follow-up work
 
-- Issue #3: implement the executable Patcharp contract suite and stable required
-  aggregate check. Until then, the policy is documented but the company gate is
-  not enforceable by GitHub.
+- Issue #3 owns the executable Patcharp contract suite, company CI workflows,
+  and Docker release pipeline described in `docs/ci-regression-gate.md`.
 - Issue #10: add in-product fork attribution/source access and integrate the
   provenance manifest into release artifacts and historical source retention.
 - Repository administration: activate the documented `main` ruleset after the

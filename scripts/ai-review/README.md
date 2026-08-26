@@ -1,7 +1,9 @@
 # AI Code Review (`scripts/ai-review`)
 
-Automated PR review that posts a single consolidated comment on every pull request. Driven by
-`.github/workflows/ai-code-review.yml` → `run-review.mjs`, using DeepSeek-V4-Pro via `opencode`.
+This is retained upstream tooling for local/manual analysis. Patcharp removed
+`.github/workflows/ai-code-review.yml` in Issue #3 and does not run DeepSeek or
+other provider-backed review automation in repository CI. The historical
+upstream workflow used `run-review.mjs` with DeepSeek-V4-Pro via `opencode`.
 
 The posted comment is branded **OpenObserve Code Reviewer**. Branding is *cosmetic + identity
 only* — it does not change what the reviewer finds or decides.
