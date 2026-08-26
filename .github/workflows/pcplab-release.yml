@@ -16,11 +16,10 @@ env:
   IMAGE_REPOSITORY: patcharp/openobserve
 
 jobs:
-  pcplab_release_gate:
-    name: pcplab_release_gate
+  pcplab_release_validate:
+    name: pcplab_release_validate
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: release-dockerhub
     outputs:
       tag_sha: ${{ steps.release.outputs.tag_sha }}
       version: ${{ steps.release.outputs.version }}
@@ -38,16 +37,7 @@ jobs:
           git remote add upstream https://github.com/openobserve/openobserve.git
           git fetch --no-tags upstream +refs/heads/main:refs/remotes/upstream/main
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-
-      - name: Login to Docker Hub for immutable-tag validation
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Validate tag, provenance, checks, and immutability
+      - name: Validate tag, provenance, and required checks
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -77,20 +67,8 @@ jobs:
               exit 1
             }
           done
-          version=${RELEASE_TAG#v}
-          set +e
-          lookup=$(docker buildx imagetools inspect "docker.io/$IMAGE_REPOSITORY:$version" 2>&1)
-          lookup_status=$?
-          set -e
-          if [ "$lookup_status" -eq 0 ]; then
-            echo "::error::Immutable Docker tag already exists: $version"
-            exit 1
-          elif ! grep -Eqi 'manifest unknown|not found|no such manifest' <<<"$lookup"; then
-            echo "::error::Docker Hub immutability lookup failed closed: $lookup"
-            exit 1
-          fi
           echo "tag_sha=$tag_sha" >>"$GITHUB_OUTPUT"
-          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "version=${RELEASE_TAG#v}" >>"$GITHUB_OUTPUT"
 
       - name: Prepare OCI labels
         id: labels
@@ -122,9 +100,44 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  pcplab_release_precheck:
+    name: pcplab_release_precheck
+    needs: [pcplab_release_validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release-dockerhub
+    steps:
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          driver-opts: image=moby/buildkit:buildx-stable-1@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
+
+      - name: Login to Docker Hub for immutable-tag validation
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Reject an existing immutable version tag
+        env:
+          VERSION: ${{ needs.pcplab_release_validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          set +e
+          lookup=$(docker buildx imagetools inspect "docker.io/$IMAGE_REPOSITORY:$VERSION" 2>&1)
+          lookup_status=$?
+          set -e
+          if [ "$lookup_status" -eq 0 ]; then
+            echo "::error::Immutable Docker tag already exists: $VERSION"
+            exit 1
+          elif ! grep -Eqi 'manifest unknown|not found|no such manifest' <<<"$lookup"; then
+            echo "::error::Docker Hub immutability lookup failed closed: $lookup"
+            exit 1
+          fi
+
   pcplab_release_image:
     name: pcplab_release_image_${{ matrix.arch }}
-    needs: [pcplab_release_gate]
+    needs: [pcplab_release_validate, pcplab_release_precheck]
     environment: release-dockerhub
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
@@ -151,7 +164,7 @@ jobs:
       - name: Checkout validated source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ needs.pcplab_release_gate.outputs.tag_sha }}
+          ref: ${{ needs.pcplab_release_validate.outputs.tag_sha }}
 
       - name: Download provenance
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -160,6 +173,8 @@ jobs:
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          driver-opts: image=moby/buildkit:buildx-stable-1@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
 
       - name: Login to Docker Hub
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -174,12 +189,10 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           platforms: ${{ matrix.platform }}
-          labels: ${{ needs.pcplab_release_gate.outputs.labels }}
+          labels: ${{ needs.pcplab_release_validate.outputs.labels }}
           outputs: type=image,name=docker.io/${{ env.IMAGE_REPOSITORY }},push-by-digest=true,name-canonical=true,push=true
           provenance: mode=max
           sbom: true
-          cache-from: type=gha,scope=pcplab-release-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=pcplab-release-${{ matrix.arch }}
 
       - name: Pull exact candidate digest for validation
         env:
@@ -194,7 +207,7 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           RELEASE_TAG: ${{ github.ref_name }}
-          TAG_SHA: ${{ needs.pcplab_release_gate.outputs.tag_sha }}
+          TAG_SHA: ${{ needs.pcplab_release_validate.outputs.tag_sha }}
         run: |
           set -euo pipefail
           docker inspect pcplab-smoke:"$ARCH" >image-inspect.json
@@ -278,7 +291,7 @@ jobs:
 
   pcplab_release_publish:
     name: pcplab_release_publish
-    needs: [pcplab_release_gate, pcplab_release_image]
+    needs: [pcplab_release_validate, pcplab_release_image]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: release-dockerhub
@@ -292,6 +305,8 @@ jobs:
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          driver-opts: image=moby/buildkit:buildx-stable-1@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
 
       - name: Login to Docker Hub
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -301,7 +316,7 @@ jobs:
 
       - name: Publish immutable multi-architecture manifest
         env:
-          VERSION: ${{ needs.pcplab_release_gate.outputs.version }}
+          VERSION: ${{ needs.pcplab_release_validate.outputs.version }}
         run: |
           set -euo pipefail
           mapfile -t digest_files < <(find release-evidence -path '*/digests/*' -type f | sort)
@@ -340,8 +355,19 @@ jobs:
             echo "::error::Docker Hub immutability recheck failed closed: $lookup"
             exit 1
           fi
-          # This is intentionally the final command: all source/platform and
-          # immutability validation completes before the production tag exists.
+          # Publication occurs only after all source/platform and immutability
+          # validation. The only following operation is a read-only assertion
+          # that Docker Hub resolved the tag to both validated digests.
           docker buildx imagetools create \
             -t "docker.io/$IMAGE_REPOSITORY:$VERSION" \
             "${source_by_arch[amd64]}" "${source_by_arch[arm64]}"
+          published=$(docker buildx imagetools inspect "docker.io/$IMAGE_REPOSITORY:$VERSION" --raw)
+          for arch in amd64 arm64; do
+            digest=${source_by_arch[$arch]##*@}
+            jq -e --arg digest "$digest" \
+              '[.manifests[]? | select(.digest == $digest)] | length == 1' \
+              <<<"$published" >/dev/null || {
+              echo "::error::Published manifest does not reference validated $arch digest $digest"
+              exit 1
+            }
+          done

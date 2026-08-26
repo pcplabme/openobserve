@@ -19,6 +19,10 @@ grep -Fq "startsWith(github.head_ref, 'sync/upstream-')" "$contract" \
   || fail "sync/upstream branches do not require the nested regression"
 grep -Fq "startsWith(github.head_ref, 'sync/security-')" "$contract" \
   || fail "sync/security branches do not require the nested regression"
+grep -Fq 'REGRESSION_REQUIRED:' "$contract" \
+  || fail "outer contract gate does not record whether regression is required"
+grep -Fq 'if [ "$REGRESSION_REQUIRED" = "true" ] && [ "$REGRESSION_RESULT" != "success" ]; then' "$contract" \
+  || fail "outer contract gate does not fail when a required regression is skipped or fails"
 
 for nested_job in pcplab_contract_regression pcplab_contract_security; do
   awk -v job="$nested_job" '

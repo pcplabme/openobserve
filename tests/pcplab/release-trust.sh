@@ -24,8 +24,22 @@ grep -Fq 'push-by-digest=true' "$release" \
   || fail "candidate image is not pushed without a version tag"
 grep -Fq 'docker pull "docker.io/$IMAGE_REPOSITORY@$DIGEST"' "$release" \
   || fail "validation does not pull the exact pushed digest"
-[[ $(grep -c 'imagetools inspect "docker.io/$IMAGE_REPOSITORY:' "$release") -eq 2 ]] \
-  || fail "immutable version tag must be checked both before build and immediately before publish"
+[[ $(grep -c 'imagetools inspect "docker.io/$IMAGE_REPOSITORY:' "$release") -eq 3 ]] \
+  || fail "version tag must be checked before build, before publish, and after publish"
+grep -Fq 'Published manifest does not reference validated $arch digest $digest' "$release" \
+  || fail "release does not assert the published manifest references both validated digests"
+if grep -qE 'cache-(from|to):[[:space:]]*type=gha' "$release"; then
+  fail "release builds must not consume or write mutable GitHub Actions caches"
+fi
+[[ $(grep -c 'driver-opts: image=moby/buildkit:.*@sha256:' "$release") -eq 3 ]] \
+  || fail "every release BuildKit instance must use the same digest-pinned driver image"
+
+validate_line=$(grep -n '^  pcplab_release_validate:' "$release" | cut -d: -f1)
+precheck_line=$(grep -n '^  pcplab_release_precheck:' "$release" | cut -d: -f1)
+validate_block=$(sed -n "${validate_line},$((precheck_line - 1))p" "$release")
+if grep -q 'environment: release-dockerhub' <<<"$validate_block"; then
+  fail "secret-free release validation must run before environment approval"
+fi
 
 build_line=$(grep -n 'Build and push untagged candidate by digest' "$release" | cut -d: -f1)
 smoke_line=$(grep -n 'Smoke-test produced image' "$release" | cut -d: -f1)

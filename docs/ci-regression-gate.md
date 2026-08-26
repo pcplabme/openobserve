@@ -22,6 +22,15 @@ runs. Its outer aggregate fails when either called workflow fails, so the two
 required checks remain compact without letting a sync PR bypass the stricter
 matrix.
 
+Repository Actions use the selected-actions payload in
+`.github/pcplab-actions-policy.json`, with both broad GitHub-owned and verified
+publisher access disabled and repository SHA pinning required. The file lists
+every direct action plus the two pinned actions called by Trivy's composite
+entrypoint. Apply the repository permission change first, immediately apply
+the selected-actions payload, then read it back and compare it byte-for-byte
+before opening a canary PR. Any new action is a supply-chain change and must
+update both the workflow pin and this policy.
+
 ## Inherited workflow inventory
 
 The upstream test commands and fixtures remain in the repository even when the
@@ -142,15 +151,19 @@ fails closed on registry lookup errors, then repeats the non-existence check
 immediately before publication; registry-side immutability is the final defense
 against an out-of-band writer or time-of-check/time-of-use race.
 
-`pcplab-release.yml` validates an annotated tag, verifies it is on `main`,
-checks the exact tagged SHA for `pcplab_pr_gate` and the outer
-`pcplab_contract_tests`, generates provenance, rejects an existing Docker
-tag, builds amd64 and arm64 candidates and pushes them without a version tag,
+`pcplab-release.yml` validates an annotated tag without requesting secrets,
+verifies it is on `main`, checks the exact tagged SHA for `pcplab_pr_gate` and
+the outer `pcplab_contract_tests`, and generates provenance. Only after that
+job succeeds does the protected environment expose Docker Hub credentials for
+the immutable-tag precheck. The workflow then builds amd64 and arm64 candidates
+from digest-pinned build/runtime images and a digest-pinned BuildKit driver,
+without a mutable Actions build cache, and pushes them without a version tag,
 pulls each exact candidate digest, runs the same strict product contract,
 generates an SBOM, and scans vulnerabilities against those exact bytes. Only
 after both digests pass does the final job validate their platform manifests,
 repeat the immutable-tag check, and create the multi-architecture version tag
-as its last command. A failed candidate may leave untagged registry content but
+before reading it back and asserting that it references exactly the two
+validated digests. A failed candidate may leave untagged registry content but
 never a production version tag. Pull requests cannot reach this path. `latest`
 is never published; release candidates never update `stable`.
 
