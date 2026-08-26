@@ -26,7 +26,14 @@ grep -Fq 'docker pull "docker.io/$IMAGE_REPOSITORY@$DIGEST"' "$release" \
   || fail "validation does not pull the exact pushed digest"
 [[ $(grep -c 'imagetools inspect "docker.io/$IMAGE_REPOSITORY:' "$release") -eq 3 ]] \
   || fail "version tag must be checked before build, before publish, and after publish"
-grep -Fq 'Published manifest does not reference validated $arch digest $digest' "$release" \
+grep -Fq 'declare -A child_by_arch=()' "$release" \
+  || fail "release does not record validated per-architecture child digests"
+grep -Fq 'child=${child_by_arch[$arch]}' "$release" \
+  || fail "post-publish verification does not compare the validated child digest"
+if grep -Fq 'digest=${source_by_arch[$arch]##*@}' "$release"; then
+  fail "post-publish verification must not compare candidate index digests to flattened children"
+fi
+grep -Fq 'Published manifest does not reference validated $arch child digest $child' "$release" \
   || fail "release does not assert the published manifest references both validated digests"
 if grep -qE 'cache-(from|to):[[:space:]]*type=gha' "$release"; then
   fail "release builds must not consume or write mutable GitHub Actions caches"

@@ -325,6 +325,7 @@ jobs:
             exit 1
           }
           declare -A source_by_arch=()
+          declare -A child_by_arch=()
           for file in "${digest_files[@]}"; do
             source="docker.io/$IMAGE_REPOSITORY@sha256:$(basename "$file")"
             raw=$(docker buildx imagetools inspect "$source" --raw)
@@ -337,6 +338,9 @@ jobs:
                   exit 1
                 }
                 source_by_arch[$arch]=$source
+                child_by_arch[$arch]=$(jq -r --arg arch "$arch" \
+                  '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch)][0].digest' \
+                  <<<"$raw")
               fi
             done
           done
@@ -363,11 +367,11 @@ jobs:
             "${source_by_arch[amd64]}" "${source_by_arch[arm64]}"
           published=$(docker buildx imagetools inspect "docker.io/$IMAGE_REPOSITORY:$VERSION" --raw)
           for arch in amd64 arm64; do
-            digest=${source_by_arch[$arch]##*@}
-            jq -e --arg digest "$digest" \
-              '[.manifests[]? | select(.digest == $digest)] | length == 1' \
+            child=${child_by_arch[$arch]}
+            jq -e --arg child "$child" \
+              '[.manifests[]? | select(.digest == $child)] | length == 1' \
               <<<"$published" >/dev/null || {
-              echo "::error::Published manifest does not reference validated $arch digest $digest"
+              echo "::error::Published manifest does not reference validated $arch child digest $child"
               exit 1
             }
           done
