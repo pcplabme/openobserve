@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_REPOSITORY: pcplab/openobserve
+  IMAGE_REPOSITORY: patcharp/openobserve
 
 jobs:
   pcplab_release_gate:

@@ -37,7 +37,7 @@ workflow that called them is removed.
 - `build-pr-image.yml`, `build-fork-pr-image.yml`: replaced by the tag-only
   PCPLAB release path; untrusted pull requests never publish images.
 - `release.yml`: replaced by `pcplab-release.yml` and Docker Hub namespace
-  `pcplab/openobserve`.
+  `patcharp/openobserve`.
 
 ### Reuse capability
 
@@ -120,7 +120,7 @@ entrypoints.
 
 ## Release trust boundary
 
-Pre-create the `pcplab/openobserve` Docker Hub repository before the first
+Confirm access to the `patcharp/openobserve` Docker Hub repository before the first
 release. A missing repository and invalid credentials can return
 indistinguishable registry errors, so the workflow deliberately fails closed
 rather than treating that response as an absent tag.
@@ -132,7 +132,7 @@ tags matching `v*-pcplab.*`, require a maintainer reviewer, and store only:
 - `DOCKERHUB_TOKEN` — a Docker Hub access token with Read and Write scope, never
   an account password
 
-Enable Docker Hub immutable tags for the `pcplab/openobserve` repository and
+Enable Docker Hub immutable tags for the `patcharp/openobserve` repository and
 cover every full PCPLAB version/RC tag. The workflow also authenticates and
 fails closed on registry lookup errors, then repeats the non-existence check
 immediately before publication; registry-side immutability is the final defense
