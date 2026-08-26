@@ -12,20 +12,20 @@ workflow_dir="${repo_root}/.github/workflows"
 [[ -d "$workflow_dir" ]] || fail "missing workflow directory"
 
 files=(
-  "$workflow_dir"/patcharp-*.yml
+  "$workflow_dir"/pcplab-*.yml
   "$workflow_dir"/upstream-drift.yml
 )
 [[ ${#files[@]} -eq 6 ]] || fail "expected exactly six owned workflows, found ${#files[@]}"
 
 while IFS= read -r action_file; do
   files+=("$action_file")
-done < <(find "${repo_root}/.github/actions" -path '*/patcharp-*/*' -name action.yml -type f 2>/dev/null | sort)
+done < <(find "${repo_root}/.github/actions" -path '*/pcplab-*/*' -name action.yml -type f 2>/dev/null | sort)
 
 tmp_root=${TMPDIR:-/tmp}
-issues=$(mktemp "${tmp_root}/patcharp-action-pins.XXXXXX")
+issues=$(mktemp "${tmp_root}/pcplab-action-pins.XXXXXX")
 cleanup() {
   case "$issues" in
-    "${tmp_root}"/patcharp-action-pins.*) rm -f -- "$issues" ;;
+    "${tmp_root}"/pcplab-action-pins.*) rm -f -- "$issues" ;;
     *) fail "refusing to remove unexpected path: $issues" ;;
   esac
 }
@@ -52,7 +52,7 @@ for file in "${files[@]}"; do
       printf '%s:%s: action is not pinned to a 40-hex commit: %s\n' "$file" "$line_number" "$target" >>"$issues"
     elif ! [[ "$comment" =~ v[0-9] ]]; then
       printf '%s:%s: pinned action lacks a version comment: %s\n' "$file" "$line_number" "$reference" >>"$issues"
-    elif [[ ${PATCHARP_VERIFY_PINS:-0} == 1 ]]; then
+    elif [[ ${PCPLAB_VERIFY_PINS:-0} == 1 ]]; then
       repository=${target%@*}
       tag=${comment%%[[:space:]]*}
       cache_key="${repository}@${tag}"

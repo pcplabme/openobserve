@@ -8,7 +8,7 @@ usage() {
   cat <<EOF
 Usage: ${script_name} [test-name]
 
-Discover tests/patcharp/*.sh and execute each script in a fresh subshell.
+Discover tests/pcplab/*.sh and execute each script in a fresh subshell.
 Report per-test PASS/FAIL and exit non-zero if any test fails.
 
 If test-name is supplied, only the matching basename (with or without the
@@ -33,7 +33,7 @@ if [[ $# -gt 1 ]]; then
 fi
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-tests_dir="${repo_root}/tests/patcharp"
+tests_dir="${repo_root}/tests/pcplab"
 [[ -d "$tests_dir" ]] || die "tests directory not found: ${tests_dir}"
 
 selector=${1:-}
@@ -67,11 +67,11 @@ else
 fi
 
 tmp_root=${TMPDIR:-/tmp}
-work_root=$(mktemp -d "${tmp_root}/patcharp-contract.XXXXXX")
+work_root=$(mktemp -d "${tmp_root}/pcplab-contract.XXXXXX")
 
 cleanup() {
   case "$work_root" in
-    "${tmp_root}"/patcharp-contract.*)
+    "${tmp_root}"/pcplab-contract.*)
       rm -rf -- "$work_root"
       ;;
     *)
@@ -81,7 +81,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-printf '%s: executing %d test(s) under tests/patcharp\n\n' "$script_name" "${#selected[@]}"
+printf '%s: executing %d test(s) under tests/pcplab\n\n' "$script_name" "${#selected[@]}"
 
 passed=0
 failed=0

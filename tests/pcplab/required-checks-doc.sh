@@ -16,7 +16,7 @@ ruleset=$(awk '
   capture && index($0, "```") == 1 { exit }
   capture { print }
 ' "$governance")
-jq -e '.name == "Protect Patcharp main"' <<<"$ruleset" >/dev/null ||
+jq -e '.name == "Protect PCPLAB main"' <<<"$ruleset" >/dev/null ||
   fail "governance ruleset JSON is missing or invalid"
 
 mapfile -t actual < <(jq -r '
@@ -24,19 +24,19 @@ mapfile -t actual < <(jq -r '
   | select(.type == "required_status_checks")
   | .parameters.required_status_checks[].context
 ' <<<"$ruleset" | sort)
-expected=(patcharp_contract_tests patcharp_pr_gate)
+expected=(pcplab_contract_tests pcplab_pr_gate)
 
 [[ "${actual[*]}" == "${expected[*]}" ]] ||
   fail "required contexts differ: expected [${expected[*]}], got [${actual[*]}]"
 
 for context in "${expected[@]}"; do
-  matches=$(grep -R -l -E "^  ${context}:$" "${repo_root}/.github/workflows"/patcharp-*.yml | wc -l)
+  matches=$(grep -R -l -E "^  ${context}:$" "${repo_root}/.github/workflows"/pcplab-*.yml | wc -l)
   [[ "$matches" == 1 ]] || fail "expected exactly one aggregate job named $context, found $matches"
 done
 
 for inherited in unit_tests_summary db_tests_summary api_tests_summary db_schema_version_check; do
   if printf '%s\n' "${actual[@]}" | grep -Fxq "$inherited"; then
-    fail "inherited context must not be a permanent Patcharp ruleset requirement: $inherited"
+    fail "inherited context must not be a permanent PCPLAB ruleset requirement: $inherited"
   fi
 done
 

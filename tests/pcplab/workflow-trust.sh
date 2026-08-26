@@ -13,11 +13,11 @@ workflows_dir="${repo_root}/.github/workflows"
 [[ -d "$workflows_dir" ]] || fail "missing ${workflows_dir}"
 
 tmp_root=${TMPDIR:-/tmp}
-tmp_dir=$(mktemp -d "${tmp_root}/patcharp-workflow-trust.XXXXXX")
+tmp_dir=$(mktemp -d "${tmp_root}/pcplab-workflow-trust.XXXXXX")
 
 cleanup() {
   case "$tmp_dir" in
-    "${tmp_root}"/patcharp-workflow-trust.*)
+    "${tmp_root}"/pcplab-workflow-trust.*)
       rm -rf -- "$tmp_dir"
       ;;
     *)
@@ -28,7 +28,7 @@ cleanup() {
 trap cleanup EXIT
 
 shopt -s nullglob
-owned_workflows=("$workflows_dir"/patcharp-*.yml "$workflows_dir"/upstream-drift.yml)
+owned_workflows=("$workflows_dir"/pcplab-*.yml "$workflows_dir"/upstream-drift.yml)
 shopt -u nullglob
 
 if [[ ${#owned_workflows[@]} -ne 6 ]]; then
@@ -154,7 +154,7 @@ for wf in "${owned_workflows[@]}"; do
   # is rejected to prevent token exposure through attacker-controlled PRs.
   if is_pr_lane "$wf"; then
     if grep -qE 'secrets\.[A-Za-z0-9_-]+' "$wf"; then
-      record "${base}: secrets.* interpolation is not allowed in Patcharp-owned PR-lane workflows"
+      record "${base}: secrets.* interpolation is not allowed in PCPLAB-owned PR-lane workflows"
     fi
   fi
 

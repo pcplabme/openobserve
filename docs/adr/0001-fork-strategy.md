@@ -2,12 +2,12 @@
 
 - Status: Accepted
 - Date: 2026-08-26
-- Decision owners: Patcharp OpenObserve maintainers
+- Decision owners: PCPLAB OpenObserve maintainers
 - Related issues: #1, #2, #3, #4, #10, #11
 
 ## Context
 
-Patcharp maintains an internal-use fork of OpenObserve OSS under AGPL-3.0. The
+PCPLAB maintains an internal-use fork of OpenObserve OSS under AGPL-3.0. The
 fork will add company requirements while continuing to receive upstream bug,
 security, dependency, schema, backend, frontend, and CI changes. Upstream moves
 quickly, and the recurring cost of a fork is dominated by understanding and
@@ -22,7 +22,7 @@ The repository is a Rust workspace with API, core, configuration, persistence,
 and other crates under `src/`, plus a Vue frontend under `web/`. Its existing
 edition boundaries are not a general extension system: Rust Enterprise paths
 are feature-gated and several `src/enterprise/*` crates are dependency stubs for
-private code; the existing audit crate also depends on private types. Patcharp
+private code; the existing audit crate also depends on private types. PCPLAB
 must implement OSS-compatible requirements independently without copying or
 deriving proprietary Enterprise implementations.
 
@@ -55,8 +55,8 @@ require it. The operational procedure is in `docs/fork-governance.md`.
 
 ### Versioning and provenance
 
-Release tags use `v<UPSTREAM_SOURCE_VERSION>-patcharp.<REVISION>`. Release
-candidates append `.rc.<REVISION>`. The Patcharp revision resets to `.1` when
+Release tags use `v<UPSTREAM_SOURCE_VERSION>-pcplab.<REVISION>`. Release
+candidates append `.rc.<REVISION>`. The PCPLAB revision resets to `.1` when
 the adopted upstream source version changes.
 
 A tag alone is never authoritative. `.fork/upstream.env` records the adopted
@@ -75,19 +75,19 @@ upstream request/domain path
 small neutral trait, event, registry, or router hook
           ^
           |
-Patcharp implementation selected at the composition root
+PCPLAB implementation selected at the composition root
 ```
 
 Contracts live at the narrowest existing upstream boundary whose domain types
-they need. Patcharp implementations depend on those contracts; upstream core
-must not depend on concrete Patcharp behavior. Prefer explicit dependency
+they need. PCPLAB implementations depend on those contracts; upstream core
+must not depend on concrete PCPLAB behavior. Prefer explicit dependency
 injection. When process-wide selection is unavoidable, initialize a typed
 registry once during bootstrap and make absence behavior explicit and tested.
 
-Company configuration uses a `PATCHARP_` environment prefix and is parsed in
+Company configuration uses a `PCPLAB_` environment prefix and is parsed in
 company-owned code. Do not expand the already high-churn upstream `Config`
 structure unless upstream code genuinely consumes the setting. Company database
-objects and migrations use a `patcharp_` namespace and a separate company
+objects and migrations use a `pcplab_` namespace and a separate company
 schema-version record; a single startup composition hook runs them after the
 upstream migrator. This avoids inserting company migrations into upstream's
 ordered `src/infra/src/table/migration/mod.rs` list.
@@ -96,7 +96,7 @@ A core modification is permitted only to establish or invoke a narrow boundary
 that cannot be composed outside the core. The PR must list each upstream-owned
 file, explain the rejected non-core option, describe default behavior when the
 company provider is absent, add contract tests, and assess upstream churn.
-Hooks must remain useful without a `patcharp` string or company-specific policy
+Hooks must remain useful without a `pcplab` string or company-specific policy
 inside upstream business logic wherever practical.
 
 ### Company-owned namespace
@@ -105,15 +105,15 @@ Use these locations for future implementation work:
 
 ```text
 .fork/                         adopted-upstream machine metadata
-src/patcharp/                  company-owned Rust crate/subtree
-web/src/patcharp/              company frontend routes, components, stores, services
-tests/patcharp/                company contract and integration tests
+src/pcplab/                  company-owned Rust crate/subtree
+web/src/pcplab/              company frontend routes, components, stores, services
+tests/pcplab/                company contract and integration tests
 docs/                          governance and architecture records
 scripts/fork-*                 fork maintenance/release tooling
 ```
 
-The first backend feature should create `src/patcharp/` as a dedicated workspace
-crate with capability modules rather than add a `patcharp` module inside many
+The first backend feature should create `src/pcplab/` as a dedicated workspace
+crate with capability modules rather than add a `pcplab` module inside many
 upstream crates. If dependency direction later requires multiple company crates,
 keep them below the same subtree and add explicit workspace members. Do not put
 company code under `src/enterprise/` or `web/src/enterprise/`; those paths
@@ -131,13 +131,13 @@ tree before implementation.
 
 | Capability | Existing path and required hook | Contract shape | Company location | Expected persistent upstream-owned edits |
 | --- | --- | --- | --- | --- |
-| Authentication provider | Authentication currently crosses `src/api/common/src/auth/`, `src/core/src/auth.rs`, HTTP middleware/router code, and user tables. Add provider selection at the request-authentication boundary; keep user persistence behind existing core/infra services. Extension callback/login routes are contributed as a router, not inserted handler-by-handler. | Async `AuthenticationProvider` accepting normalized credentials/request context and returning a typed `Principal` or typed auth error; optional session/login router contribution. Default provider preserves current OSS Basic/token behavior. | `src/patcharp/src/authn/` | One provider/registry module near `src/api/common/src/auth/`, the central auth middleware/extractor call site, composition-root wiring, and one router nest if browser callbacks are later needed. |
-| Authorization evaluator | `src/core/src/authz.rs` already funnels `check_permissions` and object listing. Replace edition-specific selection with a provider boundary while retaining `AuthExtractor` route metadata. | Async `AuthorizationProvider::{is_allowed,list_objects}` over a stable subject/action/resource/context model. Provider errors deny protected actions unless an explicitly public/default OSS path applies. | `src/patcharp/src/authz/` | Primarily `src/core/src/authz.rs`, its crate manifest, and composition-root initialization. Avoid edits to individual handlers. |
-| Audit event emitter | `src/audit` is Enterprise-only and private-type-coupled, so do not reuse its event model. Add an OSS-neutral event contract near service/middleware boundaries. HTTP middleware may supply transport context; domain services supply semantic action/outcome. | Async non-blocking `AuditEventSink::emit(AuditEvent)` with actor, organization, action, resource, outcome, request/trace IDs, timestamp, and redacted metadata. Delivery failure policy and backpressure are explicit. | `src/patcharp/src/audit/` | A neutral contract module, one HTTP middleware hook, composition-root/flush lifecycle hooks, and only those domain service hooks needed for events that cannot be inferred safely from HTTP. |
-| Company integration API | HTTP APIs are centrally composed in `src/api/http/src/handler/http/router/mod.rs`. Mount one company router built entirely in the Patcharp crate; use existing core services rather than duplicate handlers. | A versioned Axum router/service facade with company DTOs mapped to upstream domain services. Authentication and authorization use the provider contracts above. | `src/patcharp/src/api/` | Root/API crate dependency plus one `nest`/merge call in central router composition. No scattered company routes in upstream handler modules. |
-| Service/team ownership adapter | Upstream service-stream data exists in `src/core`/`src/infra`, but company ownership is a separate source of truth. Keep lookup and caching out of core unless an upstream UI/API explicitly needs ownership enrichment. | Async `OwnershipProvider::resolve(ServiceRef) -> Ownership`, with stable service identity, team reference, provenance, freshness, and not-found/error distinction. | `src/patcharp/src/ownership/` | Initially none beyond the company API. If core/UI consumes ownership, one enrichment service hook and one frontend extension contribution rather than columns/conditions throughout service-stream code. |
-| Build/version metadata | Existing `src/config/build.rs` provides tag, commit, and build date; status/config responses are in `src/api/management/src/request/status/mod.rs`. Generate Patcharp metadata independently, then merge it into the existing status/About response. | Immutable `ForkBuildMetadata` containing distribution, company release, fork SHA, upstream version/SHA/base type/security patches, build timestamp, license, and source location. | `.fork/upstream.env`, `scripts/fork-release-metadata.sh`, later `src/patcharp/src/build_metadata/` | Company crate build script/manifest, one API status response integration, and later one frontend About/Legal contribution under #10. Avoid teaching general config about release policy. |
-| Company frontend routes/components | Routes already merge route providers in `web/src/router/index.ts`/`routes.ts`; navigation is separately assembled in high-churn `MainLayout.vue`. Add one Patcharp UI manifest consumed by both route and navigation composition. | A typed `PatcharpUiExtension` exposing route records, navigation entries, optional config/bootstrap data, and feature guards. Components lazy-load. | `web/src/patcharp/{routes,components,services,stores}/` | One route-provider import/merge and one navigation contribution hook. Do not append company cases throughout `MainLayout.vue` or shared route tables. |
+| Authentication provider | Authentication currently crosses `src/api/common/src/auth/`, `src/core/src/auth.rs`, HTTP middleware/router code, and user tables. Add provider selection at the request-authentication boundary; keep user persistence behind existing core/infra services. Extension callback/login routes are contributed as a router, not inserted handler-by-handler. | Async `AuthenticationProvider` accepting normalized credentials/request context and returning a typed `Principal` or typed auth error; optional session/login router contribution. Default provider preserves current OSS Basic/token behavior. | `src/pcplab/src/authn/` | One provider/registry module near `src/api/common/src/auth/`, the central auth middleware/extractor call site, composition-root wiring, and one router nest if browser callbacks are later needed. |
+| Authorization evaluator | `src/core/src/authz.rs` already funnels `check_permissions` and object listing. Replace edition-specific selection with a provider boundary while retaining `AuthExtractor` route metadata. | Async `AuthorizationProvider::{is_allowed,list_objects}` over a stable subject/action/resource/context model. Provider errors deny protected actions unless an explicitly public/default OSS path applies. | `src/pcplab/src/authz/` | Primarily `src/core/src/authz.rs`, its crate manifest, and composition-root initialization. Avoid edits to individual handlers. |
+| Audit event emitter | `src/audit` is Enterprise-only and private-type-coupled, so do not reuse its event model. Add an OSS-neutral event contract near service/middleware boundaries. HTTP middleware may supply transport context; domain services supply semantic action/outcome. | Async non-blocking `AuditEventSink::emit(AuditEvent)` with actor, organization, action, resource, outcome, request/trace IDs, timestamp, and redacted metadata. Delivery failure policy and backpressure are explicit. | `src/pcplab/src/audit/` | A neutral contract module, one HTTP middleware hook, composition-root/flush lifecycle hooks, and only those domain service hooks needed for events that cannot be inferred safely from HTTP. |
+| Company integration API | HTTP APIs are centrally composed in `src/api/http/src/handler/http/router/mod.rs`. Mount one company router built entirely in the PCPLAB crate; use existing core services rather than duplicate handlers. | A versioned Axum router/service facade with company DTOs mapped to upstream domain services. Authentication and authorization use the provider contracts above. | `src/pcplab/src/api/` | Root/API crate dependency plus one `nest`/merge call in central router composition. No scattered company routes in upstream handler modules. |
+| Service/team ownership adapter | Upstream service-stream data exists in `src/core`/`src/infra`, but company ownership is a separate source of truth. Keep lookup and caching out of core unless an upstream UI/API explicitly needs ownership enrichment. | Async `OwnershipProvider::resolve(ServiceRef) -> Ownership`, with stable service identity, team reference, provenance, freshness, and not-found/error distinction. | `src/pcplab/src/ownership/` | Initially none beyond the company API. If core/UI consumes ownership, one enrichment service hook and one frontend extension contribution rather than columns/conditions throughout service-stream code. |
+| Build/version metadata | Existing `src/config/build.rs` provides tag, commit, and build date; status/config responses are in `src/api/management/src/request/status/mod.rs`. Generate PCPLAB metadata independently, then merge it into the existing status/About response. | Immutable `ForkBuildMetadata` containing distribution, company release, fork SHA, upstream version/SHA/base type/security patches, build timestamp, license, and source location. | `.fork/upstream.env`, `scripts/fork-release-metadata.sh`, later `src/pcplab/src/build_metadata/` | Company crate build script/manifest, one API status response integration, and later one frontend About/Legal contribution under #10. Avoid teaching general config about release policy. |
+| Company frontend routes/components | Routes already merge route providers in `web/src/router/index.ts`/`routes.ts`; navigation is separately assembled in high-churn `MainLayout.vue`. Add one PCPLAB UI manifest consumed by both route and navigation composition. | A typed `PcplabUiExtension` exposing route records, navigation entries, optional config/bootstrap data, and feature guards. Components lazy-load. | `web/src/pcplab/{routes,components,services,stores}/` | One route-provider import/merge and one navigation contribution hook. Do not append company cases throughout `MainLayout.vue` or shared route tables. |
 
 Authentication and authorization remain separate contracts. Audit observes their
 outcomes but must not become the authorization mechanism. Ownership adapters do
@@ -148,12 +148,12 @@ authz, validation, and error contracts.
 
 Upstream startup currently checks `DB_SCHEMA_VERSION`, acquires the database
 initialization lock, runs `infra::table::migrate()`, and then records the
-upstream version. A future Patcharp schema should:
+upstream version. A future PCPLAB schema should:
 
 1. run through one composition call after successful upstream migration;
 2. use the existing DDL client and distributed-lock facility but a distinct
    lock/version key;
-3. keep company migration files and tests under `src/patcharp/`;
+3. keep company migration files and tests under `src/pcplab/`;
 4. support every metadata database the fork claims to support;
 5. make backup, downgrade/forward-repair, and mixed-version behavior explicit.
 
@@ -179,7 +179,7 @@ also reports overlap between current fork edits and new upstream changes.
 ### CI and regression strategy
 
 Existing upstream-compatible checks remain authoritative for OSS behavior.
-Patcharp adds a separate company contract suite with a stable aggregate status
+PCPLAB adds a separate company contract suite with a stable aggregate status
 under #3. It runs on PRs to `main`, becomes mandatory for
 `sync/upstream-*`/`sync/security-*`, and grows with each company feature. The
 suite reuses existing API/DB/UI harnesses when useful but does not duplicate
@@ -225,13 +225,13 @@ visible and replaceable.
 
 Rejected. Duplicating authentication, user management, routing, migration, or
 frontend subsystems would silently miss upstream fixes and invite incompatible
-data/API behavior. Patcharp wraps or contributes at seams and keeps upstream as
+data/API behavior. PCPLAB wraps or contributes at seams and keeps upstream as
 the implementation of shared behavior.
 
 ### Reuse or recreate OpenObserve Enterprise implementations
 
 Rejected. The OSS repository contains feature gates and dependency stubs, not
-authority to copy proprietary implementations. Patcharp requirements are
+authority to copy proprietary implementations. PCPLAB requirements are
 designed independently against OSS contracts and remain subject to AGPL and
 company legal review.
 

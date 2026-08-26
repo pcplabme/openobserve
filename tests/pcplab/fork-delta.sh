@@ -47,11 +47,11 @@ delta_script="${repo_root}/scripts/fork-delta.sh"
 [[ -x "$delta_script" ]] || fail "fork-delta.sh not executable: ${delta_script}"
 
 tmp_root=${TMPDIR:-/tmp}
-tmp_dir=$(mktemp -d "${tmp_root}/patcharp-fork-delta.XXXXXX")
+tmp_dir=$(mktemp -d "${tmp_root}/pcplab-fork-delta.XXXXXX")
 
 cleanup() {
   case "$tmp_dir" in
-    "${tmp_root}"/patcharp-fork-delta.*)
+    "${tmp_root}"/pcplab-fork-delta.*)
       rm -rf -- "$tmp_dir"
       ;;
     *)
@@ -66,8 +66,8 @@ mkdir -p "$test_repo"
 cd "$test_repo"
 
 git init -q -b main
-git config user.name 'Patcharp Test'
-git config user.email 'patcharp-test@example.invalid'
+git config user.name 'PCPLAB Test'
+git config user.email 'pcplab-test@example.invalid'
 git config commit.gpgsign false
 
 git commit --allow-empty -qm 'base'

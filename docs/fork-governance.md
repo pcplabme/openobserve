@@ -1,13 +1,13 @@
-# Patcharp OpenObserve fork governance
+# PCPLAB OpenObserve fork governance
 
-This document is the maintainer runbook for the long-lived Patcharp fork of
+This document is the maintainer runbook for the long-lived PCPLAB fork of
 OpenObserve OSS. It governs upstream intake, release provenance, fork-delta
 control, and the security patch lane. It does not define or implement OIDC,
 RBAC, audit trail, service ownership, internal integration APIs, or OpenObserve
 Enterprise equivalents.
 
 The canonical upstream is `openobserve/openobserve:main`; the releasable fork
-integration branch is `patcharp/openobserve:main`. Automation may report and
+integration branch is `pcplabme/openobserve:main`. Automation may report and
 prepare work. A maintainer decides what reaches `main`.
 
 ## Repository analysis at foundation baseline
@@ -50,7 +50,7 @@ remains authoritative after future syncs.
   unit, database, API, and UI/E2E concerns.
 - Release tags trigger `.github/workflows/release.yml`. The current build
   metadata uses the nearest Git tag plus the fork commit and build date; it does
-  not yet expose all Patcharp/upstream provenance in-product. Issue #10 owns the
+  not yet expose all PCPLAB/upstream provenance in-product. Issue #10 owns the
   remaining About/Legal/Source surface and release-workflow integration.
 - `src/enterprise/o2_dex`, `o2_openfga`, `o2_enterprise`, and `o2_ratelimit` are
   dependency-resolution stubs for private crates. The `src/audit` crate is
@@ -177,7 +177,7 @@ remains auditable.
 
 - Resolve only on the sync branch. Never resolve by taking all of `ours` or all
   of `theirs` across the repository.
-- Establish intended behavior from the current fork tests, linked Patcharp
+- Establish intended behavior from the current fork tests, linked PCPLAB
   issues, and the upstream commits touching the conflict. Preserve upstream
   behavior unless a documented company contract requires otherwise.
 - Treat auth/user paths, migrations, `Cargo.toml`/lockfiles, API routers,
@@ -238,7 +238,7 @@ Two concepts remain separate:
 - **Upstream compatibility checks** prove the adopted OpenObserve source still
   builds and passes the relevant upstream Rust, frontend, DB, API, and E2E
   checks.
-- **Patcharp contract checks** prove company-owned behavior and extension
+- **PCPLAB contract checks** prove company-owned behavior and extension
   contracts still work. Issue #3 owns the initial executable regression suite
   and its required aggregate status check.
 
@@ -246,11 +246,11 @@ Minimum policy by branch:
 
 | PR head | Required before merge |
 | --- | --- |
-| `feature/*`, `fix/*`, `chore/*` | Existing affected upstream checks; Patcharp contract tests for any company behavior changed; fork-delta report when the PR changes architecture or upstream-owned files. |
-| `sync/upstream-*` | Full applicable upstream compatibility matrix, DB migration validation, dependency/license review, fork-delta report, drift report, and mandatory Patcharp contract aggregate gate from #3. |
-| `sync/security-*` | Targeted upstream checks plus Patcharp contract gate. Any test skipped under emergency authority must be named, risk-assessed, approved in the PR, and run immediately after deployment. |
+| `feature/*`, `fix/*`, `chore/*` | Existing affected upstream checks; PCPLAB contract tests for any company behavior changed; fork-delta report when the PR changes architecture or upstream-owned files. |
+| `sync/upstream-*` | Full applicable upstream compatibility matrix, DB migration validation, dependency/license review, fork-delta report, drift report, and mandatory PCPLAB contract aggregate gate from #3. |
+| `sync/security-*` | Targeted upstream checks plus PCPLAB contract gate. Any test skipped under emergency authority must be named, risk-assessed, approved in the PR, and run immediately after deployment. |
 
-Do not clone every expensive upstream workflow into a Patcharp workflow. Issue
+Do not clone every expensive upstream workflow into a PCPLAB workflow. Issue
 #3 should add one stable company-owned entry point and aggregate check, initially
 reusing `tests/api-testing` and `tests/db-testing` where they protect company
 contracts. New company features add tests to that suite as part of their own
@@ -355,7 +355,7 @@ Never reset or force-push shared `main`.
 1. Stop rollout or route traffic back to the last known-good immutable release.
 2. Open a `fix/*` rollback PR that reverts the sync/security PR's merge commit
    with `git revert -m 1 <merge-sha>` (or reverts the isolated cherry-pick).
-3. Re-run required gates and publish a new Patcharp revision. Do not move an
+3. Re-run required gates and publish a new PCPLAB revision. Do not move an
    existing release tag.
 4. If migrations ran, follow the reviewed migration recovery plan: restore a
    verified backup, execute a tested down migration, or ship a forward repair.
@@ -367,13 +367,13 @@ Never reset or force-push shared `main`.
 Fork releases derive from the adopted upstream source version:
 
 ```text
-v<UPSTREAM_SOURCE_VERSION>-patcharp.<REVISION>
+v<UPSTREAM_SOURCE_VERSION>-pcplab.<REVISION>
 ```
 
-Examples are `v0.93.0-patcharp.1`, `v0.93.0-patcharp.2`, and
-`v0.93.0-patcharp.3`. Release candidates use valid SemVer prerelease identifiers
-such as `v0.93.0-patcharp.3.rc.1`. When the adopted source manifest changes from
-`0.93.0` to `0.94.0`, reset the Patcharp revision to `.1`.
+Examples are `v0.93.0-pcplab.1`, `v0.93.0-pcplab.2`, and
+`v0.93.0-pcplab.3`. Release candidates use valid SemVer prerelease identifiers
+such as `v0.93.0-pcplab.3.rc.1`. When the adopted source manifest changes from
+`0.93.0` to `0.94.0`, reset the PCPLAB revision to `.1`.
 
 The tag is a label, not the provenance authority. Every artifact/release record
 must preserve:
@@ -399,8 +399,8 @@ tag until the version and provenance manifest validate successfully:
 git switch main
 git pull --ff-only origin main
 
-release=v0.93.0-patcharp.1
-git tag -a "$release" -m "Patcharp OpenObserve $release"
+release=v0.93.0-pcplab.1
+git tag -a "$release" -m "PCPLAB OpenObserve $release"
 
 metadata_file=$(mktemp)
 trap 'rm -f "$metadata_file"' EXIT
@@ -412,7 +412,7 @@ scripts/fork-release-metadata.sh "$release" > "$metadata_file" &&
 The local manifest is pre-push validation evidence, not the release artifact.
 The build job must regenerate it using the artifact's actual build timestamp and
 retain it beside checksums and source for the same immutable tag. Do not retag a
-failed release; increment the Patcharp revision. Issue #10 still
+failed release; increment the PCPLAB revision. Issue #10 still
 must wire this manifest into release artifacts and the product's prominent
 About/Legal/Source mechanism, define historical source retention/access, and
 complete legal review. Preserve `LICENSE` and all upstream notices. Do not copy,
@@ -440,7 +440,7 @@ listed contexts have reported at least once on `main`:
 
 ```json
 {
-  "name": "Protect Patcharp main",
+  "name": "Protect PCPLAB main",
   "target": "branch",
   "enforcement": "active",
   "bypass_actors": [],
@@ -470,8 +470,8 @@ listed contexts have reported at least once on `main`:
         "do_not_enforce_on_create": false,
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
-          { "context": "patcharp_pr_gate" },
-          { "context": "patcharp_contract_tests" }
+          { "context": "pcplab_pr_gate" },
+          { "context": "pcplab_contract_tests" }
         ]
       }
     }
@@ -483,7 +483,7 @@ Save that JSON as a temporary file outside the repository and apply it with an
 administrator token:
 
 ```bash
-gh api --method POST repos/patcharp/openobserve/rulesets --input /path/to/ruleset.json
+gh api --method POST repos/pcplabme/openobserve/rulesets --input /path/to/ruleset.json
 ```
 
 The field names and behavior follow GitHub's
@@ -495,16 +495,16 @@ Confirm the emitted names from a successful `main` run before saving the
 ruleset:
 
 ```text
-patcharp_pr_gate
-patcharp_contract_tests
+pcplab_pr_gate
+pcplab_contract_tests
 ```
 
 The PR aggregate owns changed-file checks, database schema guarding, API/spec
 guarding, and fork-delta reporting. The contract aggregate is the outer company
-gate: it owns Patcharp's static contracts, calls the reusable security workflow,
+gate: it owns PCPLAB's static contracts, calls the reusable security workflow,
 and calls the full reusable regression matrix on sync/security PRs and trusted
 main/merge/manual lanes. It fails if a required called workflow fails.
-`patcharp-regression.yml` and `patcharp-security.yml` still publish diagnostic
+`pcplab-regression.yml` and `pcplab-security.yml` still publish diagnostic
 aggregate names, but the required outer contract check prevents their failures
 from being bypassed without permanently expanding the `main` ruleset. A
 permanently pending inherited check is not a governance control.
@@ -522,13 +522,13 @@ the actual check names have passed on `main` at least once.
 - [ ] Conflicts and persistent fork edits explained.
 - [ ] DB migrations/schema version reviewed and recovery plan recorded.
 - [ ] Dependencies, actions, build images, licenses, and advisories reviewed.
-- [ ] Upstream compatibility and Patcharp contract gates passed.
+- [ ] Upstream compatibility and PCPLAB contract gates passed.
 - [ ] `scripts/fork-delta.sh --details` attached.
 - [ ] Release, rollout, rollback, and security reconciliation notes complete.
 
 ### Release
 
-- [ ] Tag matches `v<upstream>-patcharp.<revision>[.rc.<revision>]` and is immutable.
+- [ ] Tag matches `v<upstream>-pcplab.<revision>[.rc.<revision>]` and is immutable.
 - [ ] Source version matches root `Cargo.toml`; upstream tag claim was verified.
 - [ ] Provenance JSON generated during the actual artifact build and retained with checksums.
 - [ ] Exact corresponding source for the fork SHA is retained and accessible.
@@ -538,7 +538,7 @@ the actual check names have passed on `main` at least once.
 
 ## Known dependencies and follow-up work
 
-- Issue #3 owns the executable Patcharp contract suite, company CI workflows,
+- Issue #3 owns the executable PCPLAB contract suite, company CI workflows,
   and Docker release pipeline described in `docs/ci-regression-gate.md`.
 - Issue #10: add in-product fork attribution/source access and integrate the
   provenance manifest into release artifacts and historical source retention.

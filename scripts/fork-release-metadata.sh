@@ -6,7 +6,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/fork-release-metadata.sh <release-tag>
 
-Emit the provenance JSON for an existing Patcharp release tag. Set
+Emit the provenance JSON for an existing PCPLAB release tag. Set
 BUILD_TIMESTAMP to the artifact build time and SOURCE_URL to the retained
 Corresponding Source location when the defaults are not appropriate.
 EOF
@@ -36,8 +36,8 @@ if [[ $# -ne 1 || ${1:-} == "-h" || ${1:-} == "--help" ]]; then
 fi
 
 release_tag=$1
-if [[ ! "$release_tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-patcharp\.[1-9][0-9]*(\.rc\.[1-9][0-9]*)?$ ]]; then
-  die "release tag must match v<upstream>-patcharp.<revision>[.rc.<revision>]"
+if [[ ! "$release_tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-pcplab\.[1-9][0-9]*(\.rc\.[1-9][0-9]*)?$ ]]; then
+  die "release tag must match v<upstream>-pcplab.<revision>[.rc.<revision>]"
 fi
 tag_source_version=${BASH_REMATCH[1]}
 
@@ -66,11 +66,11 @@ case "$base_type" in
 esac
 
 build_timestamp=${BUILD_TIMESTAMP:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
-source_url=${SOURCE_URL:-https://github.com/patcharp/openobserve/tree/${fork_sha}}
+source_url=${SOURCE_URL:-https://github.com/pcplabme/openobserve/tree/${fork_sha}}
 
 cat <<EOF
 {
-  "distribution": "Patcharp OpenObserve OSS fork",
+  "distribution": "PCPLAB OpenObserve OSS fork",
   "company_release": "${release_tag}",
   "fork_sha": "${fork_sha}",
   "upstream_repository": "https://github.com/openobserve/openobserve",

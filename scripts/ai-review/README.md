@@ -1,6 +1,6 @@
 # AI Code Review (`scripts/ai-review`)
 
-This is retained upstream tooling for local/manual analysis. Patcharp removed
+This is retained upstream tooling for local/manual analysis. PCPLAB removed
 `.github/workflows/ai-code-review.yml` in Issue #3 and does not run DeepSeek or
 other provider-backed review automation in repository CI. The historical
 upstream workflow used `run-review.mjs` with DeepSeek-V4-Pro via `opencode`.

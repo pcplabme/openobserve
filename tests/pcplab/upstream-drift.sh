@@ -26,11 +26,11 @@ assert_not_contains() {
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 drift_script="${repo_root}/scripts/upstream-drift.sh"
 tmp_root=${TMPDIR:-/tmp}
-tmp_dir=$(mktemp -d "${tmp_root}/patcharp-upstream-drift.XXXXXX")
+tmp_dir=$(mktemp -d "${tmp_root}/pcplab-upstream-drift.XXXXXX")
 
 cleanup() {
   case "$tmp_dir" in
-    "${tmp_root}"/patcharp-upstream-drift.*)
+    "${tmp_root}"/pcplab-upstream-drift.*)
       rm -rf -- "$tmp_dir"
       ;;
     *)
@@ -45,8 +45,8 @@ mkdir -p "$test_repo"
 cd "$test_repo"
 
 git init -q
-git config user.name 'Patcharp Test'
-git config user.email 'patcharp-test@example.invalid'
+git config user.name 'PCPLAB Test'
+git config user.email 'pcplab-test@example.invalid'
 git commit --allow-empty -qm 'base'
 base_sha=$(git rev-parse HEAD)
 

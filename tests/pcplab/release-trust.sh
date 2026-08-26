@@ -8,10 +8,10 @@ fail() {
 }
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-release="${repo_root}/.github/workflows/patcharp-release.yml"
+release="${repo_root}/.github/workflows/pcplab-release.yml"
 
-grep -Fq 'tags: ["v*-patcharp.*"]' "$release" \
-  || fail "release trigger is not restricted to Patcharp tags"
+grep -Fq 'tags: ["v*-pcplab.*"]' "$release" \
+  || fail "release trigger is not restricted to PCPLAB tags"
 if grep -qE '^[[:space:]]*(pull_request|pull_request_target|workflow_dispatch):' "$release"; then
   fail "release exposes an untrusted or non-tag publication trigger"
 fi

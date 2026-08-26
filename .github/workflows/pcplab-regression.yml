@@ -1,4 +1,4 @@
-name: Patcharp regression
+name: PCPLAB regression
 
 on:
   workflow_call:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: patcharp-regression-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
+  group: pcplab-regression-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -17,7 +17,7 @@ env:
   ZO_BASE_URL: http://localhost:5080/
   ZO_BASE_URL_SC: http://localhost:5080/
   WS_ZO_BASE_URL: ws://localhost:5080/
-  ZO_INTERNAL_GRPC_TOKEN: patcharp-regression-token
+  ZO_INTERNAL_GRPC_TOKEN: pcplab-regression-token
   ZO_TEXT_DATA_TYPE: text
   ZO_INGEST_ALLOWED_UPTO: "48"
   ZO_CREATE_ORG_THROUGH_INGESTION: "true"
@@ -28,8 +28,8 @@ env:
   ZO_FILE_PUSH_INTERVAL: "1"
 
 jobs:
-  patcharp_regression_build:
-    name: patcharp_regression_build
+  pcplab_regression_build:
+    name: pcplab_regression_build
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -46,7 +46,7 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          shared-key: patcharp-regression
+          shared-key: pcplab-regression
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install protobuf compiler
@@ -61,13 +61,13 @@ jobs:
       - name: Upload OpenObserve binary
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: patcharp-regression-binary
+          name: pcplab-regression-binary
           path: target/release-ci/openobserve
           if-no-files-found: error
           retention-days: 1
 
-  patcharp_regression_core:
-    name: patcharp_regression_core
+  pcplab_regression_core:
+    name: pcplab_regression_core
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -81,7 +81,7 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          shared-key: patcharp-regression
+          shared-key: pcplab-regression
           save-if: false
 
       - name: Install protobuf compiler
@@ -93,9 +93,9 @@ jobs:
       - name: Run SQLite workspace tests
         run: cargo test --workspace --lib
 
-  patcharp_regression_database:
-    name: patcharp_regression_database
-    needs: [patcharp_regression_build]
+  pcplab_regression_database:
+    name: pcplab_regression_database
+    needs: [pcplab_regression_build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -117,7 +117,7 @@ jobs:
       - name: Download OpenObserve binary
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: patcharp-regression-binary
+          name: pcplab-regression-binary
           path: target/release-ci
 
       - name: Setup Python
@@ -144,7 +144,7 @@ jobs:
       - name: Start OpenObserve with PostgreSQL
         run: |
           chmod +x target/release-ci/openobserve
-          target/release-ci/openobserve >patcharp-postgres.log 2>&1 &
+          target/release-ci/openobserve >pcplab-postgres.log 2>&1 &
           echo "SERVER_PID=$!" >>"$GITHUB_ENV"
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://localhost:5080/healthz >/dev/null; then
@@ -170,16 +170,16 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: patcharp-regression-database
+          name: pcplab-regression-database
           path: |
-            patcharp-postgres.log
+            pcplab-postgres.log
             tests/db-testing/postgres-junit.xml
           if-no-files-found: warn
           retention-days: 7
 
-  patcharp_regression_api:
-    name: patcharp_regression_api
-    needs: [patcharp_regression_build]
+  pcplab_regression_api:
+    name: pcplab_regression_api
+    needs: [pcplab_regression_build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -192,7 +192,7 @@ jobs:
       - name: Download OpenObserve binary
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: patcharp-regression-binary
+          name: pcplab-regression-binary
           path: target/release-ci
 
       - name: Setup Python
@@ -219,7 +219,7 @@ jobs:
       - name: Start OpenObserve with SQLite
         run: |
           chmod +x target/release-ci/openobserve
-          target/release-ci/openobserve >patcharp-api.log 2>&1 &
+          target/release-ci/openobserve >pcplab-api.log 2>&1 &
           echo "SERVER_PID=$!" >>"$GITHUB_ENV"
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://localhost:5080/healthz >/dev/null; then
@@ -234,8 +234,8 @@ jobs:
         working-directory: tests/api-testing
         run: rye run pytest tests/test_framework_selfcheck.py -m framework -v --tb=short --junitxml=api-junit.xml
 
-      - name: Run Patcharp product contracts
-        run: bash scripts/patcharp-product-smoke.sh
+      - name: Run PCPLAB product contracts
+        run: bash scripts/pcplab-product-smoke.sh
 
       - name: Stop OpenObserve
         if: always()
@@ -248,30 +248,30 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: patcharp-regression-api
+          name: pcplab-regression-api
           path: |
-            patcharp-api.log
+            pcplab-api.log
             tests/api-testing/api-junit.xml
           if-no-files-found: warn
           retention-days: 7
 
-  patcharp_regression_tests:
-    name: patcharp_regression_tests
+  pcplab_regression_tests:
+    name: pcplab_regression_tests
     runs-on: ubuntu-latest
     permissions: {}
     needs:
-      - patcharp_regression_build
-      - patcharp_regression_core
-      - patcharp_regression_database
-      - patcharp_regression_api
+      - pcplab_regression_build
+      - pcplab_regression_core
+      - pcplab_regression_database
+      - pcplab_regression_api
     if: always()
     steps:
       - name: Aggregate regression results
         env:
-          BUILD_RESULT: ${{ needs.patcharp_regression_build.result }}
-          CORE_RESULT: ${{ needs.patcharp_regression_core.result }}
-          DATABASE_RESULT: ${{ needs.patcharp_regression_database.result }}
-          API_RESULT: ${{ needs.patcharp_regression_api.result }}
+          BUILD_RESULT: ${{ needs.pcplab_regression_build.result }}
+          CORE_RESULT: ${{ needs.pcplab_regression_core.result }}
+          DATABASE_RESULT: ${{ needs.pcplab_regression_database.result }}
+          API_RESULT: ${{ needs.pcplab_regression_api.result }}
         run: |
           set -euo pipefail
           failed=0

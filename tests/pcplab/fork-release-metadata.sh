@@ -42,11 +42,11 @@ metadata_script="${repo_root}/scripts/fork-release-metadata.sh"
 [[ -x "$metadata_script" ]] || fail "fork-release-metadata.sh not executable: ${metadata_script}"
 
 tmp_root=${TMPDIR:-/tmp}
-tmp_dir=$(mktemp -d "${tmp_root}/patcharp-fork-release-metadata.XXXXXX")
+tmp_dir=$(mktemp -d "${tmp_root}/pcplab-fork-release-metadata.XXXXXX")
 
 cleanup() {
   case "$tmp_dir" in
-    "${tmp_root}"/patcharp-fork-release-metadata.*)
+    "${tmp_root}"/pcplab-fork-release-metadata.*)
       rm -rf -- "$tmp_dir"
       ;;
     *)
@@ -61,8 +61,8 @@ mkdir -p "$test_repo"
 cd "$test_repo"
 
 git init -q -b main
-git config user.name 'Patcharp Test'
-git config user.email 'patcharp-test@example.invalid'
+git config user.name 'PCPLAB Test'
+git config user.email 'pcplab-test@example.invalid'
 git config commit.gpgsign false
 git config tag.gpgsign false
 
@@ -101,12 +101,12 @@ make_release() {
 # -------------------------------------------------------------------------
 # Valid tag grammar + valid metadata: must emit parseable provenance JSON.
 # -------------------------------------------------------------------------
-make_release v0.93.0-patcharp.1 0.93.0 main-development
+make_release v0.93.0-pcplab.1 0.93.0 main-development
 valid_output=$(expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' SOURCE_URL='https://example.invalid/source' \
-  "$metadata_script" v0.93.0-patcharp.1)
+  "$metadata_script" v0.93.0-pcplab.1)
 jq -e . >/dev/null <<<"$valid_output" || fail "valid release must emit valid JSON"
-assert_contains "$valid_output" '"distribution": "Patcharp OpenObserve OSS fork"'
-assert_contains "$valid_output" '"company_release": "v0.93.0-patcharp.1"'
+assert_contains "$valid_output" '"distribution": "PCPLAB OpenObserve OSS fork"'
+assert_contains "$valid_output" '"company_release": "v0.93.0-pcplab.1"'
 assert_contains "$valid_output" '"fork_sha":'
 assert_contains "$valid_output" '"upstream_source_version": "0.93.0"'
 assert_contains "$valid_output" '"upstream_base_sha":'
@@ -116,21 +116,21 @@ assert_contains "$valid_output" '"source": "https://example.invalid/source"'
 assert_contains "$valid_output" '"license": "AGPL-3.0"'
 
 # Release-candidate grammar must also be accepted.
-make_release v0.93.0-patcharp.2.rc.1 0.93.0 main-development
-expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' "$metadata_script" v0.93.0-patcharp.2.rc.1 >/dev/null
+make_release v0.93.0-pcplab.2.rc.1 0.93.0 main-development
+expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' "$metadata_script" v0.93.0-pcplab.2.rc.1 >/dev/null
 
 # -------------------------------------------------------------------------
 # Rejected tag grammar: wrong prefix, bad revision, prerelease must be rc.
 # -------------------------------------------------------------------------
 expect_fail 'release tag must match' "$metadata_script" 'not-a-tag'
-expect_fail 'release tag must match' "$metadata_script" '0.93.0-patcharp.1'
-expect_fail 'release tag must match' "$metadata_script" 'v0.93.0-patcharp.0'
-expect_fail 'release tag must match' "$metadata_script" 'v0.93.0-patcharp.1.beta.1'
-expect_fail 'release tag must match' "$metadata_script" 'v0.93.0-patcharp'
+expect_fail 'release tag must match' "$metadata_script" '0.93.0-pcplab.1'
+expect_fail 'release tag must match' "$metadata_script" 'v0.93.0-pcplab.0'
+expect_fail 'release tag must match' "$metadata_script" 'v0.93.0-pcplab.1.beta.1'
+expect_fail 'release tag must match' "$metadata_script" 'v0.93.0-pcplab'
 
 # A real release tag that has never been created locally must die because
 # `git rev-parse --verify` rejects it.
-expect_fail 'does not exist locally' "$metadata_script" v9.99.99-patcharp.1
+expect_fail 'does not exist locally' "$metadata_script" v9.99.99-pcplab.1
 
 # -------------------------------------------------------------------------
 # Metadata/version mismatch: Cargo.toml version disagrees with metadata.
@@ -155,9 +155,9 @@ mkdir -p .fork
 printf 'version = "0.94.0"\n' >Cargo.toml
 git add .fork/upstream.env Cargo.toml
 git commit --allow-empty -qm 'release with mismatched Cargo.toml'
-force_tag v0.93.0-patcharp.1
-git tag -a v0.93.0-patcharp.1 -m 'mismatch'
-expect_fail 'does not match metadata version' "$metadata_script" v0.93.0-patcharp.1
+force_tag v0.93.0-pcplab.1
+git tag -a v0.93.0-pcplab.1 -m 'mismatch'
+expect_fail 'does not match metadata version' "$metadata_script" v0.93.0-pcplab.1
 
 # -------------------------------------------------------------------------
 # Invalid base type must be rejected even when version + grammar are valid.
@@ -175,9 +175,9 @@ mkdir -p .fork
 printf 'version = "0.93.0"\n' >Cargo.toml
 git add .fork/upstream.env Cargo.toml
 git commit --allow-empty -qm 'release with bad base type'
-force_tag v0.93.0-patcharp.1
-git tag -a v0.93.0-patcharp.1 -m 'bad base type'
-expect_fail 'unsupported UPSTREAM_BASE_TYPE' "$metadata_script" v0.93.0-patcharp.1
+force_tag v0.93.0-pcplab.1
+git tag -a v0.93.0-pcplab.1 -m 'bad base type'
+expect_fail 'unsupported UPSTREAM_BASE_TYPE' "$metadata_script" v0.93.0-pcplab.1
 
 # -------------------------------------------------------------------------
 # release-tag and security-cherry-pick base types must be accepted.
@@ -196,9 +196,9 @@ for ok_type in release-tag security-cherry-pick; do
   printf 'version = "0.93.0"\n' >Cargo.toml
   git add .fork/upstream.env Cargo.toml
   git commit --allow-empty -qm "release with ${ok_type}"
-  force_tag v0.93.0-patcharp.1
-  git tag -a v0.93.0-patcharp.1 -m "${ok_type}"
-  expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' "$metadata_script" v0.93.0-patcharp.1 >/dev/null
+  force_tag v0.93.0-pcplab.1
+  git tag -a v0.93.0-pcplab.1 -m "${ok_type}"
+  expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' "$metadata_script" v0.93.0-pcplab.1 >/dev/null
 done
 
 printf 'fork-release-metadata-test: PASS\n'

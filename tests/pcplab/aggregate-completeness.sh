@@ -11,10 +11,10 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 workflow_dir="${repo_root}/.github/workflows"
 
 declare -A aggregates=(
-  [patcharp-pr.yml]=patcharp_pr_gate
-  [patcharp-contract.yml]=patcharp_contract_tests
-  [patcharp-regression.yml]=patcharp_regression_tests
-  [patcharp-security.yml]=patcharp_security_gate
+  [pcplab-pr.yml]=pcplab_pr_gate
+  [pcplab-contract.yml]=pcplab_contract_tests
+  [pcplab-regression.yml]=pcplab_regression_tests
+  [pcplab-security.yml]=pcplab_security_gate
 )
 
 for workflow in "${!aggregates[@]}"; do

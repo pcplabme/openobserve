@@ -1,4 +1,4 @@
-name: Patcharp PR
+name: PCPLAB PR
 
 on:
   pull_request:
@@ -11,12 +11,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: patcharp-pr-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
+  group: pcplab-pr-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  patcharp_pr_scope:
-    name: patcharp_pr_scope
+  pcplab_pr_scope:
+    name: pcplab_pr_scope
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.changes.outputs.backend }}
@@ -58,8 +58,8 @@ jobs:
           echo "api_spec=$(classify '^(tests/ui-testing/playwright-tests/.*\.spec\.js$|tests/ui-testing/scripts/classify-specs\.js$|src/api/)')" >>"$GITHUB_OUTPUT"
           printf '%s\n' "$changed" >>"$GITHUB_STEP_SUMMARY"
 
-  patcharp_pr_fork_delta:
-    name: patcharp_pr_fork_delta
+  pcplab_pr_fork_delta:
+    name: pcplab_pr_fork_delta
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -70,10 +70,10 @@ jobs:
       - name: Report fork delta
         run: scripts/fork-delta.sh --details >>"$GITHUB_STEP_SUMMARY"
 
-  patcharp_pr_backend:
-    name: patcharp_pr_backend
-    needs: [patcharp_pr_scope]
-    if: needs.patcharp_pr_scope.outputs.backend == 'true'
+  pcplab_pr_backend:
+    name: pcplab_pr_backend
+    needs: [pcplab_pr_scope]
+    if: needs.pcplab_pr_scope.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -85,7 +85,7 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          shared-key: patcharp-pr
+          shared-key: pcplab-pr
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install protobuf compiler
@@ -111,10 +111,10 @@ jobs:
       - name: Run Rust unit tests
         run: cargo test --workspace --lib
 
-  patcharp_pr_frontend:
-    name: patcharp_pr_frontend
-    needs: [patcharp_pr_scope]
-    if: needs.patcharp_pr_scope.outputs.frontend == 'true'
+  pcplab_pr_frontend:
+    name: pcplab_pr_frontend
+    needs: [pcplab_pr_scope]
+    if: needs.pcplab_pr_scope.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -143,10 +143,10 @@ jobs:
       - name: Run frontend unit tests
         run: npm run test:unit -- --run
 
-  patcharp_pr_database:
-    name: patcharp_pr_database
-    needs: [patcharp_pr_scope]
-    if: needs.patcharp_pr_scope.outputs.database == 'true'
+  pcplab_pr_database:
+    name: pcplab_pr_database
+    needs: [pcplab_pr_scope]
+    if: needs.pcplab_pr_scope.outputs.database == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -156,14 +156,14 @@ jobs:
 
       - name: Guard database schema version
         env:
-          BASE_SHA: ${{ needs.patcharp_pr_scope.outputs.base_sha }}
-          HEAD_SHA: ${{ needs.patcharp_pr_scope.outputs.head_sha }}
+          BASE_SHA: ${{ needs.pcplab_pr_scope.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.pcplab_pr_scope.outputs.head_sha }}
         run: bash .github/scripts/check-db-schema-version.sh "$BASE_SHA" "$HEAD_SHA"
 
-  patcharp_pr_api_spec:
-    name: patcharp_pr_api_spec
-    needs: [patcharp_pr_scope]
-    if: needs.patcharp_pr_scope.outputs.api_spec == 'true'
+  pcplab_pr_api_spec:
+    name: pcplab_pr_api_spec
+    needs: [pcplab_pr_scope]
+    if: needs.pcplab_pr_scope.outputs.api_spec == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -173,8 +173,8 @@ jobs:
 
       - name: Guard pure API Playwright specifications
         env:
-          BASE_SHA: ${{ needs.patcharp_pr_scope.outputs.base_sha }}
-          HEAD_SHA: ${{ needs.patcharp_pr_scope.outputs.head_sha }}
+          BASE_SHA: ${{ needs.pcplab_pr_scope.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.pcplab_pr_scope.outputs.head_sha }}
         run: |
           set -euo pipefail
           if ! git diff --name-only --diff-filter=AR "$BASE_SHA" "$HEAD_SHA" \
@@ -187,31 +187,31 @@ jobs:
             node tests/ui-testing/scripts/classify-specs.js --check "${files[@]}"
           fi
 
-  patcharp_pr_gate:
-    name: patcharp_pr_gate
+  pcplab_pr_gate:
+    name: pcplab_pr_gate
     runs-on: ubuntu-latest
     permissions: {}
     needs:
-      - patcharp_pr_scope
-      - patcharp_pr_fork_delta
-      - patcharp_pr_backend
-      - patcharp_pr_frontend
-      - patcharp_pr_database
-      - patcharp_pr_api_spec
+      - pcplab_pr_scope
+      - pcplab_pr_fork_delta
+      - pcplab_pr_backend
+      - pcplab_pr_frontend
+      - pcplab_pr_database
+      - pcplab_pr_api_spec
     if: always()
     steps:
       - name: Aggregate PR results
         env:
-          SCOPE_RESULT: ${{ needs.patcharp_pr_scope.result }}
-          FORK_DELTA_RESULT: ${{ needs.patcharp_pr_fork_delta.result }}
-          BACKEND_REQUIRED: ${{ needs.patcharp_pr_scope.outputs.backend }}
-          BACKEND_RESULT: ${{ needs.patcharp_pr_backend.result }}
-          FRONTEND_REQUIRED: ${{ needs.patcharp_pr_scope.outputs.frontend }}
-          FRONTEND_RESULT: ${{ needs.patcharp_pr_frontend.result }}
-          DATABASE_REQUIRED: ${{ needs.patcharp_pr_scope.outputs.database }}
-          DATABASE_RESULT: ${{ needs.patcharp_pr_database.result }}
-          API_SPEC_REQUIRED: ${{ needs.patcharp_pr_scope.outputs.api_spec }}
-          API_SPEC_RESULT: ${{ needs.patcharp_pr_api_spec.result }}
+          SCOPE_RESULT: ${{ needs.pcplab_pr_scope.result }}
+          FORK_DELTA_RESULT: ${{ needs.pcplab_pr_fork_delta.result }}
+          BACKEND_REQUIRED: ${{ needs.pcplab_pr_scope.outputs.backend }}
+          BACKEND_RESULT: ${{ needs.pcplab_pr_backend.result }}
+          FRONTEND_REQUIRED: ${{ needs.pcplab_pr_scope.outputs.frontend }}
+          FRONTEND_RESULT: ${{ needs.pcplab_pr_frontend.result }}
+          DATABASE_REQUIRED: ${{ needs.pcplab_pr_scope.outputs.database }}
+          DATABASE_RESULT: ${{ needs.pcplab_pr_database.result }}
+          API_SPEC_REQUIRED: ${{ needs.pcplab_pr_scope.outputs.api_spec }}
+          API_SPEC_RESULT: ${{ needs.pcplab_pr_api_spec.result }}
         run: |
           set -euo pipefail
           [ "$SCOPE_RESULT" = success ] || { echo "::error::scope result: $SCOPE_RESULT"; exit 1; }

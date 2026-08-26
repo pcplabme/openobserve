@@ -1,4 +1,4 @@
-name: Patcharp security
+name: PCPLAB security
 
 on:
   workflow_call:
@@ -10,12 +10,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: patcharp-security-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
+  group: pcplab-security-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  patcharp_security_scope:
-    name: patcharp_security_scope
+  pcplab_security_scope:
+    name: pcplab_security_scope
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.scope.outputs.rust }}
@@ -50,12 +50,12 @@ jobs:
           }
           echo "rust=$(select_check '(^|/)Cargo\.(toml|lock)$|^deny\.toml$|^rust-toolchain\.toml$')" >>"$GITHUB_OUTPUT"
           echo "javascript=$(select_check '^web/package(-lock)?\.json$')" >>"$GITHUB_OUTPUT"
-          echo "workflows=$(select_check '^(\.github/workflows/|\.github/actions/|tests/patcharp/|scripts/(patcharp-|fork-delta\.sh$|fork-release-metadata\.sh$))')" >>"$GITHUB_OUTPUT"
+          echo "workflows=$(select_check '^(\.github/workflows/|\.github/actions/|tests/pcplab/|scripts/(pcplab-|fork-delta\.sh$|fork-release-metadata\.sh$))')" >>"$GITHUB_OUTPUT"
 
-  patcharp_security_rust:
-    name: patcharp_security_rust
-    needs: [patcharp_security_scope]
-    if: needs.patcharp_security_scope.outputs.rust == 'true'
+  pcplab_security_rust:
+    name: pcplab_security_rust
+    needs: [pcplab_security_scope]
+    if: needs.pcplab_security_scope.outputs.rust == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -75,10 +75,10 @@ jobs:
         with:
           command: check
 
-  patcharp_security_javascript:
-    name: patcharp_security_javascript
-    needs: [patcharp_security_scope]
-    if: needs.patcharp_security_scope.outputs.javascript == 'true'
+  pcplab_security_javascript:
+    name: pcplab_security_javascript
+    needs: [pcplab_security_scope]
+    if: needs.pcplab_security_scope.outputs.javascript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -107,10 +107,10 @@ jobs:
           --production
           --onlyAllow="MIT;ISC;Apache-2.0;BSD;BSD-2-Clause;BSD-3-Clause;MPL-2.0;Unlicense;CC0-1.0;CC-BY-4.0;Artistic-2.0;UNLICENSED;Python-2.0;BlueOak-1.0.0"
 
-  patcharp_security_workflows:
-    name: patcharp_security_workflows
-    needs: [patcharp_security_scope]
-    if: needs.patcharp_security_scope.outputs.workflows == 'true'
+  pcplab_security_workflows:
+    name: pcplab_security_workflows
+    needs: [pcplab_security_scope]
+    if: needs.pcplab_security_scope.outputs.workflows == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -118,32 +118,32 @@ jobs:
 
       - name: Verify action pins
         env:
-          PATCHARP_VERIFY_PINS: "1"
-        run: bash tests/patcharp/action-pins.sh
+          PCPLAB_VERIFY_PINS: "1"
+        run: bash tests/pcplab/action-pins.sh
 
       - name: Verify workflow trust boundaries
-        run: bash tests/patcharp/workflow-trust.sh
+        run: bash tests/pcplab/workflow-trust.sh
 
-  patcharp_security_gate:
-    name: patcharp_security_gate
+  pcplab_security_gate:
+    name: pcplab_security_gate
     runs-on: ubuntu-latest
     permissions: {}
     needs:
-      - patcharp_security_scope
-      - patcharp_security_rust
-      - patcharp_security_javascript
-      - patcharp_security_workflows
+      - pcplab_security_scope
+      - pcplab_security_rust
+      - pcplab_security_javascript
+      - pcplab_security_workflows
     if: always()
     steps:
       - name: Aggregate security results
         env:
-          SCOPE_RESULT: ${{ needs.patcharp_security_scope.result }}
-          RUST_REQUIRED: ${{ needs.patcharp_security_scope.outputs.rust }}
-          RUST_RESULT: ${{ needs.patcharp_security_rust.result }}
-          JAVASCRIPT_REQUIRED: ${{ needs.patcharp_security_scope.outputs.javascript }}
-          JAVASCRIPT_RESULT: ${{ needs.patcharp_security_javascript.result }}
-          WORKFLOWS_REQUIRED: ${{ needs.patcharp_security_scope.outputs.workflows }}
-          WORKFLOWS_RESULT: ${{ needs.patcharp_security_workflows.result }}
+          SCOPE_RESULT: ${{ needs.pcplab_security_scope.result }}
+          RUST_REQUIRED: ${{ needs.pcplab_security_scope.outputs.rust }}
+          RUST_RESULT: ${{ needs.pcplab_security_rust.result }}
+          JAVASCRIPT_REQUIRED: ${{ needs.pcplab_security_scope.outputs.javascript }}
+          JAVASCRIPT_RESULT: ${{ needs.pcplab_security_javascript.result }}
+          WORKFLOWS_REQUIRED: ${{ needs.pcplab_security_scope.outputs.workflows }}
+          WORKFLOWS_RESULT: ${{ needs.pcplab_security_workflows.result }}
         run: |
           set -euo pipefail
           [ "$SCOPE_RESULT" = success ] || { echo "::error::scope result: $SCOPE_RESULT"; exit 1; }

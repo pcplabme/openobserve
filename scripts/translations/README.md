@@ -137,9 +137,9 @@ python3 main.py --check          # exits 2 if anything is pending, 0 if clean
 
 ## Historical upstream GitHub Actions workflows
 
-Patcharp removed both inherited workflow entrypoints in Issue #3. Their former
+PCPLAB removed both inherited workflow entrypoints in Issue #3. Their former
 behavior is retained below as upstream context for the scripts; neither job runs
-in Patcharp CI today.
+in PCPLAB CI today.
 
 #### `update-translations.yml` — removed generator
 
@@ -167,9 +167,9 @@ in Patcharp CI today.
   mid-review). **In the merge queue it fails**, ejecting the entry rather than letting
   English-only strings reach `main`.
 
-> Patcharp removed this inherited workflow entrypoint in Issue #3. The
+> PCPLAB removed this inherited workflow entrypoint in Issue #3. The
 > translation checker remains available for local/manual use and may later be
-> added to `patcharp-pr.yml` for affected frontend paths; it is not currently a
+> added to `pcplab-pr.yml` for affected frontend paths; it is not currently a
 > required status check.
 
 ### Run lifecycle guarantees

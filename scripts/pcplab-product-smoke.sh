@@ -10,12 +10,12 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 base_url=${ZO_BASE_URL:-http://localhost:5080/}
 base_url=${base_url%/}
-org=${PATCHARP_SMOKE_ORG:-default}
-stream=${PATCHARP_SMOKE_STREAM:-patcharp_contract_smoke}
+org=${PCPLAB_SMOKE_ORG:-default}
+stream=${PCPLAB_SMOKE_STREAM:-pcplab_contract_smoke}
 auth=$(printf '%s' "${ZO_ROOT_USER_EMAIL}:${ZO_ROOT_USER_PASSWORD}" | base64 | tr -d '\r\n')
 fixture_dir="${repo_root}/tests/test-data/test-assist-ci/seed"
 tmp_root=${TMPDIR:-/tmp}
-work_dir=$(mktemp -d "${tmp_root}/patcharp-product-smoke.XXXXXX")
+work_dir=$(mktemp -d "${tmp_root}/pcplab-product-smoke.XXXXXX")
 dashboard_id=
 
 cleanup() {
@@ -25,7 +25,7 @@ cleanup() {
       -X DELETE "${base_url}/api/${org}/dashboards/${dashboard_id}" >/dev/null 2>&1 || true
   fi
   case "$work_dir" in
-    "${tmp_root}"/patcharp-product-smoke.*) rm -rf -- "$work_dir" ;;
+    "${tmp_root}"/pcplab-product-smoke.*) rm -rf -- "$work_dir" ;;
     *) printf '%s: refusing to remove unexpected path: %s\n' "$script_name" "$work_dir" >&2 ;;
   esac
 }
@@ -160,12 +160,12 @@ done
 }
 
 printf '%s: validating dashboard API lifecycle\n' "$script_name"
-jq -n '{version:8,title:"Patcharp contract smoke",description:"Patcharp CI product contract",folder_id:"default",tabs:[]}' \
+jq -n '{version:8,title:"PCPLAB contract smoke",description:"PCPLAB CI product contract",folder_id:"default",tabs:[]}' \
   >"${work_dir}/dashboard.json"
 request POST "${base_url}/api/${org}/dashboards" "${work_dir}/dashboard.json" \
   >"${work_dir}/dashboard-result.json"
 dashboard_id=$(jq -er '.v8.dashboardId' "${work_dir}/dashboard-result.json")
 request GET "${base_url}/api/${org}/dashboards/${dashboard_id}" \
-  | jq -e '.v8.title == "Patcharp contract smoke"' >/dev/null
+  | jq -e '.v8.title == "PCPLAB contract smoke"' >/dev/null
 
 printf '%s: PASS (startup, logs, metrics, traces, dashboard/API)\n' "$script_name"

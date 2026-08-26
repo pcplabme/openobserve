@@ -3,7 +3,7 @@
 ## Manifest index
 
 Upstream Playwright workflows build their matrices from these JSON files (via a
-`generate_matrix` job). Patcharp removed the inherited workflow entrypoints in
+`generate_matrix` job). PCPLAB removed the inherited workflow entrypoints in
 Issue #3 but retains these manifests, builders, and fixtures for bounded
 full-regression expansion. Shared upstream workflows use an OSS **base** + an
 ENT **overlay** (`*.ent.json`, in the enterprise repo); ENT-only workflows use a
@@ -29,8 +29,8 @@ from its OSS checkout).
 `ci_matrix.json` (this directory) is the **only** place the Playwright UI shard list
 lives. The upstream OSS and Enterprise `playwright.yml` workflows build their
 test matrix from it at run time via `.github/scripts/build-ci-matrix.js`.
-Patcharp does not currently invoke that workflow automatically; use the retained
-builder/harness manually until an affected-path Patcharp regression lane adopts
+PCPLAB does not currently invoke that workflow automatically; use the retained
+builder/harness manually until an affected-path PCPLAB regression lane adopts
 it.
 
 ## Adding / moving a spec
