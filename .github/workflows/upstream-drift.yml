@@ -1,0 +1,44 @@
+name: Upstream drift
+
+on:
+  schedule:
+    # A weekly report gives maintainers visibility while normal sync decisions remain biweekly.
+    - cron: "23 2 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    name: upstream_drift_report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Fetch canonical upstream main
+        run: |
+          git remote add upstream https://github.com/openobserve/openobserve.git 2>/dev/null || \
+            git remote set-url upstream https://github.com/openobserve/openobserve.git
+          git fetch --prune --no-tags upstream \
+            +refs/heads/main:refs/remotes/upstream/main
+
+      - name: Report upstream drift
+        run: |
+          report_file="${RUNNER_TEMP}/upstream-drift.txt"
+          bash scripts/upstream-drift.sh upstream/main | tee "$report_file"
+          {
+            echo '```text'
+            cat "$report_file"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload drift report
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-drift-${{ github.run_id }}
+          path: ${{ runner.temp }}/upstream-drift.txt
+          retention-days: 30
