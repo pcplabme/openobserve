@@ -125,6 +125,10 @@ release. A missing repository and invalid credentials can return
 indistinguishable registry errors, so the workflow deliberately fails closed
 rather than treating that response as an absent tag.
 
+This registry namespace is an intentional account-level exception: PCPLAB owns
+the project branding and GitHub source, while the image remains in the
+maintainer's existing free Docker Hub account.
+
 Create a protected GitHub Environment named `release-dockerhub`. Restrict it to
 tags matching `v*-pcplab.*`, require a maintainer reviewer, and store only:
 

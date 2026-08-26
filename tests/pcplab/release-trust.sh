@@ -13,7 +13,7 @@ release="${repo_root}/.github/workflows/pcplab-release.yml"
 grep -Fq 'tags: ["v*-pcplab.*"]' "$release" \
   || fail "release trigger is not restricted to PCPLAB tags"
 grep -Fq 'IMAGE_REPOSITORY: patcharp/openobserve' "$release" \
-  || fail "release must publish through the Patcharp Docker Hub account"
+  || fail "release must publish through the configured Docker Hub repository"
 if grep -qE '^[[:space:]]*(pull_request|pull_request_target|workflow_dispatch):' "$release"; then
   fail "release exposes an untrusted or non-tag publication trigger"
 fi
