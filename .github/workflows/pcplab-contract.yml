@@ -54,6 +54,7 @@ jobs:
       - name: Aggregate contract results
         env:
           CONTRACT_RESULT: ${{ needs.pcplab_contract_run.result }}
+          REGRESSION_REQUIRED: ${{ github.event_name != 'pull_request' || startsWith(github.head_ref, 'sync/upstream-') || startsWith(github.head_ref, 'sync/security-') }}
           REGRESSION_RESULT: ${{ needs.pcplab_contract_regression.result }}
           SECURITY_RESULT: ${{ needs.pcplab_contract_security.result }}
         run: |
@@ -62,8 +63,12 @@ jobs:
             echo "::error::PCPLAB contract run was '$CONTRACT_RESULT'"
             exit 1
           fi
-          if [ "$REGRESSION_RESULT" != "success" ] && [ "$REGRESSION_RESULT" != "skipped" ]; then
-            echo "::error::PCPLAB regression was '$REGRESSION_RESULT'"
+          if [ "$REGRESSION_REQUIRED" = "true" ] && [ "$REGRESSION_RESULT" != "success" ]; then
+            echo "::error::PCPLAB regression was required but result was '$REGRESSION_RESULT'"
+            exit 1
+          fi
+          if [ "$REGRESSION_REQUIRED" != "true" ] && [ "$REGRESSION_RESULT" != "success" ] && [ "$REGRESSION_RESULT" != "skipped" ]; then
+            echo "::error::PCPLAB regression was not required but result was '$REGRESSION_RESULT'"
             exit 1
           fi
           if [ "$SECURITY_RESULT" != "success" ]; then

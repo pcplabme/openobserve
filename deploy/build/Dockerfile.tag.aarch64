@@ -1,12 +1,12 @@
-# syntax=docker/dockerfile:1
-FROM public.ecr.aws/docker/library/node:24-trixie AS webbuilder
+# syntax=docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+FROM public.ecr.aws/docker/library/node:24-trixie@sha256:e3883d5e4d0b1998cc27f355bd9202cbaf86edc14d07b54b715def0ed4c71093 AS webbuilder
 WORKDIR /web
 COPY ./web /web/
 
 RUN npm install
 RUN NODE_OPTIONS="--max-old-space-size=8192" npm run build
 
-FROM public.ecr.aws/zinclabs/rust:trixie-sccache AS builder
+FROM public.ecr.aws/zinclabs/rust:trixie-sccache@sha256:7bab03446e13d9d2eaaaef9cd7c6183f3cf1c40d9f982d18340e56e2b8c48962 AS builder
 # RUN apt-get update
 # RUN apt-get install -y protobuf-compiler
 # RUN apt-get install -y cmake curl
@@ -27,7 +27,7 @@ ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
 RUN cargo build --profile release-prod --features mimalloc --target aarch64-unknown-linux-gnu
 RUN mv /openobserve/target/aarch64-unknown-linux-gnu/release-prod/openobserve /openobserve/target/release/openobserve
 
-FROM gcr.io/distroless/cc-debian13:latest-arm64 AS runtime
+FROM gcr.io/distroless/cc-debian13:latest@sha256:e86cf4f565c8eee2cbb2be073bb107dafb14734b53d5872da20fdf47418a02f4 AS runtime
 COPY --from=builder /openobserve/target/release/openobserve /
 COPY --from=builder /lib/aarch64-linux-gnu/liblzma.so.5 /lib/aarch64-linux-gnu/liblzma.so.5
 COPY --from=builder /lib/aarch64-linux-gnu/libz.so.1 /lib/aarch64-linux-gnu/libz.so.1
