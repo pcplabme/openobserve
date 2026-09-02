@@ -182,11 +182,10 @@ deeper destructive-migration detection remain required Issue #3 work after that
 baseline is published; they are not silently treated as covered by the fresh-DB
 tests.
 
-Repository Actions currently permits `local_only` actions, so these workflows'
-pinned third-party actions cannot execute yet; no repository ruleset is active.
-Keep that restrictive policy until the workflows are merged and a staged canary
-is approved. Broadening the Actions allow policy, provisioning the protected
-environment and Docker Hub immutability, running a deliberate-failure canary,
+Repository Actions uses the exact selected-actions policy in
+`.github/pcplab-actions-policy.json` with repository SHA pinning enabled; no
+repository ruleset is active yet. Provisioning the protected environment and
+Docker Hub immutability, running success and deliberate-failure canaries,
 performing a dry release, confirming the two emitted outer check names, and only
-then activating the ruleset are required operational completion evidence for
+then activating the ruleset remain required operational completion evidence for
 Issue #3.
