@@ -106,7 +106,7 @@ jobs:
         run: mkdir -p web/dist && touch web/dist/index.html
 
       - name: Run SQLite workspace tests
-        run: cargo test --workspace --lib
+        run: cargo test --workspace --lib -- --test-threads=1
 
   pcplab_regression_database:
     name: pcplab_regression_database
