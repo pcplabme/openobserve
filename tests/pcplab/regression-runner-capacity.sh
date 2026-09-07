@@ -38,7 +38,14 @@ grep -Fq 'git fetch --force --tags https://github.com/openobserve/openobserve.gi
   || fail 'core regression does not fetch authoritative upstream tags for GIT_VERSION'
 grep -Fq 'git describe --tags --abbrev=0' <<<"$core_job" \
   || fail 'core regression does not fail fast when no version tag is reachable'
+grep -Fq 'cargo run -- init-db' <<<"$core_job" \
+  || fail 'core regression does not initialize the SQLite schema before DB-backed unit tests'
 grep -Fxq '        run: cargo test --workspace --lib -- --test-threads=1' <<<"$core_job" \
   || fail 'core regression does not serialize tests that share global DB/coordinator state'
+
+init_db_line=$(grep -nF 'cargo run -- init-db' <<<"$core_job" | cut -d: -f1)
+test_line=$(grep -nF 'cargo test --workspace --lib -- --test-threads=1' <<<"$core_job" | cut -d: -f1)
+[[ "$init_db_line" -lt "$test_line" ]] \
+  || fail 'core regression must initialize the SQLite schema before running unit tests'
 
 printf 'regression-runner-capacity-test: PASS\n'

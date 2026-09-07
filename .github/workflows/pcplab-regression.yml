@@ -105,6 +105,9 @@ jobs:
       - name: Prepare backend-only frontend artifact
         run: mkdir -p web/dist && touch web/dist/index.html
 
+      - name: Initialize SQLite schema for DB-backed tests
+        run: cargo run -- init-db
+
       - name: Run SQLite workspace tests
         run: cargo test --workspace --lib -- --test-threads=1
 
