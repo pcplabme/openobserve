@@ -140,6 +140,12 @@ diagnostic artifacts. Playwright and broader API fixtures remain available for
 later affected-path expansion without retaining their inherited workflow
 entrypoints.
 
+Rust workspace checks and tests can exhaust the standard hosted-runner disk
+after compiling the upstream dependency graph. Both the PR backend lane and
+the full regression core lane remove unused preinstalled toolchains before
+checkout and disable test-profile debug artifacts; a contract keeps those
+capacity controls ahead of checkout/cache restoration.
+
 ## Release trust boundary
 
 Confirm access to the `patcharp/openobserve` Docker Hub repository before the first
