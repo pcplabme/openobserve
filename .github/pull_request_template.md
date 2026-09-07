@@ -44,7 +44,18 @@ Fork-delta result or impact:
 For `sync/upstream-*` or `sync/security-*` PRs:
 
 - [ ] Upstream source version, exact SHA, and base type are recorded.
+- [ ] Advisory/CVE and upstream fix SHA(s) are recorded, or the security fields are marked not applicable.
 - [ ] Migration and dependency diffs received explicit review.
 - [ ] Upstream compatibility checks passed.
-- [ ] PCPLAB contract checks passed, or an approved emergency exception is documented.
+- [ ] Required aggregate PCPLAB gates passed; no emergency exception bypasses them.
 - [ ] Rollback and post-sync/reconciliation notes are included.
+
+Emergency test deferral, if used (leave blank otherwise):
+
+- Deferred test(s):
+- Risk and compensating validation:
+- Exception approver:
+- Approval timestamp:
+- Exception expiry:
+- Follow-up owner:
+- Post-deployment evidence:

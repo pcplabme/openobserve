@@ -21,11 +21,11 @@ required_keys=(
   UPSTREAM_BASE_TYPE
 )
 
-# UPSTREAM_SECURITY_PATCH_SHAS is required to be present (the metadata
-# contract forbids omitting the key) but its value may be empty when no
-# security patches have been recorded.
+# Security patch/advisory keys are required to be present (the metadata
+# contract forbids omitting them) but may be empty for ordinary upstream bases.
 required_key_allowed_empty=(
   UPSTREAM_SECURITY_PATCH_SHAS
+  UPSTREAM_SECURITY_ADVISORIES
 )
 
 declare -A seen=()
@@ -102,13 +102,56 @@ if ! [[ "$repository" =~ ^https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+(\.
 fi
 
 # UPSTREAM_SECURITY_PATCH_SHAS accepts empty list or comma-separated hex SHAs.
+validate_security_metadata() {
+  local candidate_base_type=$1
+  local security_shas=$2
+  local security_advisories=$3
+
+  if [[ -n "$security_shas" ]]; then
+    local entry
+    for entry in ${security_shas//,/ }; do
+      if ! [[ "$entry" =~ ^[0-9a-f]{7,40}$ ]]; then
+        fail "UPSTREAM_SECURITY_PATCH_SHAS entry must be a hex SHA; got: ${entry}"
+      fi
+    done
+  fi
+
+  if [[ -n "$security_advisories" ]]; then
+    local advisory
+    for advisory in ${security_advisories//,/ }; do
+      if ! [[ "$advisory" =~ ^CVE-[0-9]{4}-[0-9]{4,}$|^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$|^EMBARGOED$ ]]; then
+        fail "UPSTREAM_SECURITY_ADVISORIES entry must be CVE, GHSA, or EMBARGOED; got: ${advisory}"
+      fi
+    done
+  fi
+
+  if [[ "$candidate_base_type" == security-cherry-pick ]]; then
+    [[ -n "$security_shas" ]] \
+      || fail 'security-cherry-pick requires UPSTREAM_SECURITY_PATCH_SHAS'
+    [[ -n "$security_advisories" ]] \
+      || fail 'security-cherry-pick requires UPSTREAM_SECURITY_ADVISORIES'
+  fi
+}
+
 security_shas=${seen[UPSTREAM_SECURITY_PATCH_SHAS]}
-if [[ -n "$security_shas" ]]; then
-  for entry in ${security_shas//,/ }; do
-    if ! [[ "$entry" =~ ^[0-9a-f]{7,40}$ ]]; then
-      fail "UPSTREAM_SECURITY_PATCH_SHAS entry must be a hex SHA; got: ${entry}"
-    fi
-  done
+security_advisories=${seen[UPSTREAM_SECURITY_ADVISORIES]}
+validate_security_metadata "$base_type" "$security_shas" "$security_advisories"
+
+# Exercise fail-closed branches independently of the current adoption record.
+for invalid_advisory in CVE-2026-123 GHSA-bad EMBARGOED-123 arbitrary; do
+  if (validate_security_metadata main-development '' "$invalid_advisory") >/dev/null 2>&1; then
+    fail "invalid security advisory was accepted: ${invalid_advisory}"
+  fi
+done
+for valid_advisory in CVE-2026-1234 GHSA-abcd-1234-efgh EMBARGOED; do
+  (validate_security_metadata security-cherry-pick deadbee "$valid_advisory") >/dev/null 2>&1 \
+    || fail "valid security metadata was rejected: ${valid_advisory}"
+done
+if (validate_security_metadata security-cherry-pick '' CVE-2026-1234) >/dev/null 2>&1; then
+  fail 'security-cherry-pick accepted an empty security patch list'
+fi
+if (validate_security_metadata security-cherry-pick deadbee '') >/dev/null 2>&1; then
+  fail 'security-cherry-pick accepted an empty advisory list'
 fi
 
 printf 'upstream-env-schema-test: PASS\n'

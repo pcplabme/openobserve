@@ -79,7 +79,7 @@ main
 ├── fix/*
 ├── chore/*
 ├── sync/upstream-YYYY-MM-DD
-└── sync/security-<CVE-or-topic>
+└── sync/security-YYYY-MM-DD-<topic>
 ```
 
 `main` is always the releasable integration branch.
@@ -95,7 +95,7 @@ main
   merge commit** method. Squashing or rebasing that PR would discard the
   ancestry the policy is intended to preserve.
 - Feature, fix, and chore PRs may use the repository's normal merge strategy.
-- Critical/high security work may use `sync/security-<CVE-or-topic>` at any
+- Critical/high security work may use `sync/security-YYYY-MM-DD-<topic>` at any
   time, but still requires a PR and traceable review.
 
 ## Machine-readable upstream adoption record
@@ -108,13 +108,19 @@ UPSTREAM_SOURCE_VERSION=0.93.0
 UPSTREAM_BASE_SHA=<exact fully integrated upstream commit>
 UPSTREAM_BASE_TYPE=release-tag|main-development|security-cherry-pick
 UPSTREAM_SECURITY_PATCH_SHAS=<comma-separated targeted upstream fixes, if any>
+UPSTREAM_SECURITY_ADVISORIES=<comma-separated CVE/GHSA identifiers or EMBARGOED>
 ```
 
 The file is input data, not executable shell. Scripts parse it without
 `source`. Update it in the same sync/security PR that changes the adopted base.
 `UPSTREAM_BASE_SHA` remains the last fully integrated upstream snapshot so
 fork-delta comparisons stay meaningful. A targeted security release sets base
-type to `security-cherry-pick` and records fix SHA(s) separately.
+type to `security-cherry-pick` and records fix SHA(s) and the corresponding
+advisory identifier(s) separately. `UPSTREAM_SECURITY_ADVISORIES` accepts CVE
+or GHSA identifiers. Use `EMBARGOED` until a coordinated disclosure receives a
+public identifier; replace it in a reviewed PR after disclosure. The metadata
+does not require one advisory per commit because one advisory can require
+multiple upstream fixes.
 
 ## Normal upstream synchronization
 
@@ -248,7 +254,24 @@ Minimum policy by branch:
 | --- | --- |
 | `feature/*`, `fix/*`, `chore/*` | Existing affected upstream checks; PCPLAB contract tests for any company behavior changed; fork-delta report when the PR changes architecture or upstream-owned files. |
 | `sync/upstream-*` | Full applicable upstream compatibility matrix, DB migration validation, dependency/license review, fork-delta report, drift report, and mandatory PCPLAB contract aggregate gate from #3. |
-| `sync/security-*` | Targeted upstream checks plus PCPLAB contract gate. Any test skipped under emergency authority must be named, risk-assessed, approved in the PR, and run immediately after deployment. |
+| `sync/security-*` | Targeted upstream checks plus PCPLAB contract gate. A narrowly deferred test must follow the emergency-exception controls below; aggregate PCPLAB gates must still pass. |
+
+### Emergency test-deferral exception
+
+An emergency exception is a named in-suite test deferral, not permission to
+bypass, ignore, or manually override a required aggregate check. The remaining
+suite and both aggregate PCPLAB gates must still pass before release. A second
+maintainer who is not the patch author must approve the deferral after reviewing
+the affected scope, why the test cannot run safely or in time, compensating
+evidence, and rollback readiness.
+
+Record the deferred test name and command, risk assessment, approver, approval
+timestamp, expiry, compensating validation, owner, and follow-up result in both
+the security PR and deployment record. The exception expires one business day
+after deployment. The named test must run by that deadline and before the next
+scheduled upstream sync; a failure stops further rollout and enters the rollback
+procedure. Expiry never converts a failing or missing aggregate gate into an
+acceptable result.
 
 Do not clone every expensive upstream workflow into a PCPLAB workflow. Issue
 #3 should add one stable company-owned entry point and aggregate check, initially
@@ -316,33 +339,38 @@ decision      patch      changes
 git fetch --prune upstream origin
 git switch main
 git pull --ff-only origin main
-git switch -c sync/security-<CVE-or-topic>
+git switch -c sync/security-YYYY-MM-DD-<topic>
 git cherry-pick -x <upstream-fix-sha>
 ```
 
 The `-x` trailer preserves upstream provenance. Update
 `UPSTREAM_BASE_TYPE=security-cherry-pick` and append the exact fix SHA to
-`UPSTREAM_SECURITY_PATCH_SHAS`; do not move `UPSTREAM_BASE_SHA` unless a full
-upstream snapshot was merged. Open a PR containing the advisory, affected
-configuration/versions, upstream fix SHA, fork commits, tests, rollout,
-rollback, and reconciliation plan.
+`UPSTREAM_SECURITY_PATCH_SHAS`. Record the CVE/GHSA identifier, or `EMBARGOED`
+during coordinated disclosure, in `UPSTREAM_SECURITY_ADVISORIES`; do not move
+`UPSTREAM_BASE_SHA` unless a full upstream snapshot was merged. Open a PR
+containing the advisory, affected configuration/versions, upstream fix SHA,
+fork commits, tests, rollout, rollback, and reconciliation plan.
 
 ### Dependent fix / emergency sync
 
 When the fix depends on broader upstream work, use
-`sync/security-<CVE-or-topic>` but perform the normal `--no-ff --no-commit`
+`sync/security-YYYY-MM-DD-<topic>` but perform the normal `--no-ff --no-commit`
 upstream merge. Review the expanded change surface explicitly. The branch name
 records urgency; the adopted base type remains `main-development` (or a real
-`release-tag`) because the full snapshot was integrated.
+`release-tag`) because the full snapshot was integrated. Record the triggering
+CVE/GHSA identifier, or `EMBARGOED`, in `UPSTREAM_SECURITY_ADVISORIES` so the
+release provenance remains traceable even though no isolated patch list is
+needed.
 
 ### Post-cherry-pick reconciliation
 
 At the next normal sync, verify whether `upstream/main` contains every recorded
 security fix. Merge normally, resolve equivalent-patch conflicts by preserving
 the reviewed final behavior, and run the same security regression cases. Remove
-only reconciled SHAs from `UPSTREAM_SECURITY_PATCH_SHAS`; reset the base type to
-the actual adopted snapshot type. Link the scheduled sync PR back to the
-security PR and advisory so the chain remains:
+only reconciled SHAs from `UPSTREAM_SECURITY_PATCH_SHAS` and their resolved
+entries from `UPSTREAM_SECURITY_ADVISORIES`; reset the base type to the actual
+adopted snapshot type. Link the scheduled sync PR back to the security PR and
+advisory so the chain remains:
 
 ```text
 upstream advisory -> upstream fix SHA -> fork PR -> fork release SHA -> deployed version
@@ -386,6 +414,7 @@ Upstream source version
 Upstream exact base SHA
 Upstream base type
 Upstream security patch SHA(s), when applicable
+Upstream security advisory identifier(s), when applicable
 Build timestamp
 License
 Corresponding Source location

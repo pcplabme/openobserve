@@ -35,4 +35,15 @@ done
 grep -Fq 'required=(pcplab_pr_gate pcplab_contract_tests)' "$release" \
   || fail "release does not require the two stable outer checks on the tagged SHA"
 
+required_check_block=$(awk '
+  /required=\(pcplab_pr_gate pcplab_contract_tests\)/ { capture=1 }
+  capture { print }
+  capture && /^[[:space:]]*done$/ { exit }
+' "$release")
+[[ -n "$required_check_block" ]] \
+  || fail 'could not locate the release required-check enforcement block'
+if grep -Eq 'continue-on-error|\|\|[[:space:]]*true|emergency|exception' <<<"$required_check_block"; then
+  fail 'release required-check enforcement contains a bypass path'
+fi
+
 printf 'outer-gate-test: PASS\n'
