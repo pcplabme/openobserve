@@ -39,7 +39,12 @@ expect_pass() {
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 metadata_script="${repo_root}/scripts/fork-release-metadata.sh"
+release_workflow="${repo_root}/.github/workflows/pcplab-release.yml"
 [[ -x "$metadata_script" ]] || fail "fork-release-metadata.sh not executable: ${metadata_script}"
+grep -Fq 'ai.pcplab.upstream.security_patch_shas=$(jq -r .upstream_security_patch_shas provenance.json)' "$release_workflow" \
+  || fail 'release image labels do not preserve upstream security patch SHAs'
+grep -Fq 'ai.pcplab.upstream.security_advisories=$(jq -r .upstream_security_advisories provenance.json)' "$release_workflow" \
+  || fail 'release image labels do not preserve upstream security advisories'
 
 tmp_root=${TMPDIR:-/tmp}
 tmp_dir=$(mktemp -d "${tmp_root}/pcplab-fork-release-metadata.XXXXXX")
@@ -87,6 +92,7 @@ make_release() {
     printf 'UPSTREAM_BASE_SHA=%s\n' "$base_sha"
     printf 'UPSTREAM_BASE_TYPE=%s\n' "$base_type"
     printf 'UPSTREAM_SECURITY_PATCH_SHAS=\n'
+    printf 'UPSTREAM_SECURITY_ADVISORIES=\n'
     printf '# release marker %s\n' "$tag"
   } >.fork/upstream.env
   printf 'version = "%s"\n' "$source_version" >Cargo.toml
@@ -111,6 +117,7 @@ assert_contains "$valid_output" '"fork_sha":'
 assert_contains "$valid_output" '"upstream_source_version": "0.93.0"'
 assert_contains "$valid_output" '"upstream_base_sha":'
 assert_contains "$valid_output" '"upstream_base_type": "main-development"'
+assert_contains "$valid_output" '"upstream_security_advisories": ""'
 assert_contains "$valid_output" '"build_timestamp": "2026-08-26T00:00:00Z"'
 assert_contains "$valid_output" '"source": "https://example.invalid/source"'
 assert_contains "$valid_output" '"license": "AGPL-3.0"'
@@ -190,7 +197,13 @@ for ok_type in release-tag security-cherry-pick; do
     printf 'UPSTREAM_SOURCE_VERSION=0.93.0\n'
     printf 'UPSTREAM_BASE_SHA=%s\n' "$base_sha"
     printf 'UPSTREAM_BASE_TYPE=%s\n' "$ok_type"
-    printf 'UPSTREAM_SECURITY_PATCH_SHAS=\n'
+    if [[ "$ok_type" == security-cherry-pick ]]; then
+      printf 'UPSTREAM_SECURITY_PATCH_SHAS=deadbee\n'
+      printf 'UPSTREAM_SECURITY_ADVISORIES=CVE-2026-1234\n'
+    else
+      printf 'UPSTREAM_SECURITY_PATCH_SHAS=\n'
+      printf 'UPSTREAM_SECURITY_ADVISORIES=\n'
+    fi
     printf '# %s marker\n' "$ok_type"
   } >.fork/upstream.env
   printf 'version = "0.93.0"\n' >Cargo.toml
@@ -200,5 +213,24 @@ for ok_type in release-tag security-cherry-pick; do
   git tag -a v0.93.0-pcplab.1 -m "${ok_type}"
   expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' "$metadata_script" v0.93.0-pcplab.1 >/dev/null
 done
+
+# Historical tags created before advisory provenance was added remain readable.
+rm -rf .fork Cargo.toml
+mkdir -p .fork
+{
+  printf 'UPSTREAM_REPOSITORY=https://github.com/openobserve/openobserve.git\n'
+  printf 'UPSTREAM_SOURCE_VERSION=0.93.0\n'
+  printf 'UPSTREAM_BASE_SHA=%s\n' "$base_sha"
+  printf 'UPSTREAM_BASE_TYPE=main-development\n'
+  printf 'UPSTREAM_SECURITY_PATCH_SHAS=\n'
+} >.fork/upstream.env
+printf 'version = "0.93.0"\n' >Cargo.toml
+git add .fork/upstream.env Cargo.toml
+git commit --allow-empty -qm 'historical release without advisory metadata'
+git tag -a v0.93.0-pcplab.99 -m 'historical metadata fixture'
+historical_output=$(expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' \
+  "$metadata_script" v0.93.0-pcplab.99)
+jq -e . >/dev/null <<<"$historical_output" || fail 'historical metadata must emit valid JSON'
+assert_contains "$historical_output" '"upstream_security_advisories": ""'
 
 printf 'fork-release-metadata-test: PASS\n'

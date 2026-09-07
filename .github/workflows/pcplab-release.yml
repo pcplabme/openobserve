@@ -89,6 +89,7 @@ jobs:
             echo "ai.pcplab.upstream.base_sha=$(jq -r .upstream_base_sha provenance.json)"
             echo "ai.pcplab.upstream.base_type=$(jq -r .upstream_base_type provenance.json)"
             echo "ai.pcplab.upstream.security_patch_shas=$(jq -r .upstream_security_patch_shas provenance.json)"
+            echo "ai.pcplab.upstream.security_advisories=$(jq -r .upstream_security_advisories provenance.json)"
             echo 'PCPLAB_LABELS'
           } >>"$GITHUB_OUTPUT"
 

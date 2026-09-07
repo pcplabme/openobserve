@@ -50,6 +50,7 @@ source_version=$(metadata_value UPSTREAM_SOURCE_VERSION)
 base_sha=$(metadata_value UPSTREAM_BASE_SHA)
 base_type=$(metadata_value UPSTREAM_BASE_TYPE)
 security_patch_shas=$(metadata_value UPSTREAM_SECURITY_PATCH_SHAS true)
+security_advisories=$(metadata_value UPSTREAM_SECURITY_ADVISORIES true)
 
 [[ "$tag_source_version" == "$source_version" ]] || die \
   "tag source version ${tag_source_version} does not match metadata version ${source_version}"
@@ -78,6 +79,7 @@ cat <<EOF
   "upstream_base_sha": "${base_sha}",
   "upstream_base_type": "${base_type}",
   "upstream_security_patch_shas": "${security_patch_shas}",
+  "upstream_security_advisories": "${security_advisories}",
   "build_timestamp": "${build_timestamp}",
   "license": "AGPL-3.0",
   "source": "${source_url}"

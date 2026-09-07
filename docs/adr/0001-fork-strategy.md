@@ -49,9 +49,10 @@ The fork adopts upstream approximately every two weeks through
 `sync/upstream-YYYY-MM-DD`. The sync branch merges `upstream/main` with an
 explicit merge commit, resolves and validates there, then reaches `main` by a PR
 that also uses a merge commit. Shared `main` is never rebased or force-pushed.
-Security fixes use `sync/security-<CVE-or-topic>` and either `cherry-pick -x` an
-isolated upstream fix or perform an emergency upstream merge when dependencies
-require it. The operational procedure is in `docs/fork-governance.md`.
+Security fixes use `sync/security-YYYY-MM-DD-<topic>` and either
+`cherry-pick -x` an isolated upstream fix or perform an emergency upstream
+merge when dependencies require it. The operational procedure is in
+`docs/fork-governance.md`.
 
 ### Versioning and provenance
 
@@ -61,8 +62,9 @@ the adopted upstream source version changes.
 
 A tag alone is never authoritative. `.fork/upstream.env` records the adopted
 upstream source version, exact fully integrated SHA, base type, and targeted
-security fix SHAs. Release artifacts additionally record company release, fork
-SHA, build timestamp, license, and Corresponding Source location.
+security fix SHAs plus CVE/GHSA identifiers (or `EMBARGOED` while disclosure is
+coordinated). Release artifacts additionally record company release, fork SHA,
+build timestamp, license, and Corresponding Source location.
 
 ### Extension-boundary policy
 
@@ -189,9 +191,11 @@ upstream coverage merely to claim ownership.
 
 Critical/High upstream issues receive immediate impact analysis. Isolated fixes
 are cherry-picked with provenance on `sync/security-*`; dependent fixes use an
-emergency upstream merge. Both paths use PR review, regression testing or an
-explicitly approved and time-bounded emergency exception, immutable release
-metadata, rollback planning, and reconciliation during the next normal sync.
+emergency upstream merge. Both paths use PR review, immutable release metadata,
+rollback planning, and reconciliation during the next normal sync. An emergency
+exception is only a named in-suite test deferral approved by a second maintainer;
+it never bypasses the aggregate gates, and the deferred test expires one
+business day after deployment and before the next scheduled sync.
 
 ## Alternatives considered
 
