@@ -32,10 +32,14 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+          if [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ] || [ "$EVENT_NAME" = merge_group ] \
+            || [[ "$HEAD_REF" == sync/upstream-* ]] || [[ "$HEAD_REF" == sync/security-* ]] \
+            || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null \
+            || ! git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
             changed=all
           else
             changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
@@ -48,7 +52,31 @@ jobs:
               printf 'false'
             fi
           }
-          echo "rust=$(select_check '(^|/)Cargo\.(toml|lock)$|^deny\.toml$|^rust-toolchain\.toml$')" >>"$GITHUB_OUTPUT"
+          rust=false
+          if [ "$changed" = all ] \
+            || grep -Eq '^deny\.toml$|^rust-toolchain\.toml$|^\.github/workflows/pcplab-security\.yml$|^scripts/pcplab-external-lock-view\.sh$' <<<"$changed"; then
+            rust=true
+          elif grep -Eq '(^|/)Cargo\.(toml|lock)$' <<<"$changed"; then
+            if ! grep -Eq '(^|/)Cargo\.lock$' <<<"$changed"; then
+              # A manifest-only edit may alter activated dependency features.
+              rust=true
+            elif grep -E '(^|/)Cargo\.lock$' <<<"$changed" | grep -qv '^Cargo\.lock$'; then
+              # Root tooling does not audit independent nested lockfiles.
+              rust=true
+            else
+              base_view=$(mktemp)
+              head_view=$(mktemp)
+              if git show "$BASE_SHA:Cargo.lock" | bash scripts/pcplab-external-lock-view.sh >"$base_view" \
+                && git show "$HEAD_SHA:Cargo.lock" | bash scripts/pcplab-external-lock-view.sh >"$head_view"; then
+                cmp -s "$base_view" "$head_view" || rust=true
+              else
+                # Missing/unparseable lockfiles fail closed toward a full scan.
+                rust=true
+              fi
+              rm -f "$base_view" "$head_view"
+            fi
+          fi
+          echo "rust=$rust" >>"$GITHUB_OUTPUT"
           echo "javascript=$(select_check '^web/package(-lock)?\.json$')" >>"$GITHUB_OUTPUT"
           echo "workflows=$(select_check '^(\.github/workflows/|\.github/actions/|tests/pcplab/|scripts/(pcplab-|fork-delta\.sh$|fork-release-metadata\.sh$))')" >>"$GITHUB_OUTPUT"
 

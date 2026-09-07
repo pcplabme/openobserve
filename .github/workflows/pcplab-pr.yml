@@ -79,9 +79,25 @@ jobs:
     timeout-minutes: 90
     env:
       CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      ZO_META_STORE: sqlite
+      ZO_DATA_DIR: /tmp/openobserve-pr
     steps:
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h /
+
       - name: Checkout repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream tags for build metadata
+        run: |
+          git fetch --force --tags https://github.com/openobserve/openobserve.git
+          git describe --tags --abbrev=0
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -109,8 +125,11 @@ jobs:
           -W clippy::excessive_nesting
           -D warnings
 
+      - name: Initialize SQLite schema for DB-backed tests
+        run: cargo run -- init-db
+
       - name: Run Rust unit tests
-        run: cargo test --workspace --lib
+        run: cargo test --workspace --lib -- --test-threads=1
 
   pcplab_pr_frontend:
     name: pcplab_pr_frontend
