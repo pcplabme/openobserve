@@ -10,9 +10,10 @@ fail() {
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 governance="${repo_root}/docs/fork-governance.md"
 adr="${repo_root}/docs/adr/0001-fork-strategy.md"
+workflow_doc="${repo_root}/docs/multi-agent-workflow.md"
 contract="${repo_root}/.github/workflows/pcplab-contract.yml"
 
-for document in "$governance" "$adr"; do
+for document in "$governance" "$adr" "$workflow_doc"; do
   grep -Fq 'sync/security-YYYY-MM-DD-<topic>' "$document" \
     || fail "dated security branch convention missing from ${document#"${repo_root}/"}"
   if grep -Fq 'sync/security-<CVE-or-topic>' "$document"; then

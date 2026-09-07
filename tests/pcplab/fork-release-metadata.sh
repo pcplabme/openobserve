@@ -39,7 +39,12 @@ expect_pass() {
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 metadata_script="${repo_root}/scripts/fork-release-metadata.sh"
+release_workflow="${repo_root}/.github/workflows/pcplab-release.yml"
 [[ -x "$metadata_script" ]] || fail "fork-release-metadata.sh not executable: ${metadata_script}"
+grep -Fq 'ai.pcplab.upstream.security_patch_shas=$(jq -r .upstream_security_patch_shas provenance.json)' "$release_workflow" \
+  || fail 'release image labels do not preserve upstream security patch SHAs'
+grep -Fq 'ai.pcplab.upstream.security_advisories=$(jq -r .upstream_security_advisories provenance.json)' "$release_workflow" \
+  || fail 'release image labels do not preserve upstream security advisories'
 
 tmp_root=${TMPDIR:-/tmp}
 tmp_dir=$(mktemp -d "${tmp_root}/pcplab-fork-release-metadata.XXXXXX")
