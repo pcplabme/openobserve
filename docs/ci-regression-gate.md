@@ -22,6 +22,19 @@ runs. Its outer aggregate fails when either called workflow fails, so the two
 required checks remain compact without letting a sync PR bypass the stricter
 matrix.
 
+The Rust security lane runs when the resolved third-party crate graph changes.
+It compares complete registry/git package records from `Cargo.lock`, including
+versions, sources, checksums, and dependency arrays. A change that only adds or
+updates source-less workspace packages does not rerun the inherited dependency
+graph scan; manifest-only changes, comparison failures, sync/security branches,
+merge queue, scheduled, and manual runs fail closed toward a full scan. All
+PCPLAB-owned workspace crates under `src/pcplab` must declare `publish = false`,
+which the fast contract suite enforces independently. That path is the
+company-owned extension boundary established by ADR 0001; inherited workspace
+members are handled by mandatory upstream-sync scans. Source-less records are
+trusted only for first-party workspace code—vendored third-party code must not
+be introduced as an untracked path crate.
+
 Repository Actions use the selected-actions payload in
 `.github/pcplab-actions-policy.json`, with both broad GitHub-owned and verified
 publisher access disabled and repository SHA pinning required. The file lists
