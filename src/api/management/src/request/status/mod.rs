@@ -49,6 +49,7 @@ use infra::{
 };
 use openobserve_api_common::extractors::Headers;
 use openobserve_core::{auth::UserEmail, cache::STREAM_EXECUTABLE_PIPELINES};
+use openobserve_pcplab::build_metadata::ForkBuildMetadata;
 use search::{
     datafusion::{storage::file_statistics_cache, udf::DEFAULT_FUNCTIONS},
     tantivy::cache as tantivy_result_cache,
@@ -136,6 +137,7 @@ pub fn reload_enterprise_config() -> Result<(), anyhow::Error> {
 #[derive(Serialize)]
 struct ConfigResponse<'a> {
     version: String,
+    pcplab_fork: ForkBuildMetadata,
     commit_hash: String,
     build_date: String,
     build_type: String,
@@ -511,6 +513,7 @@ pub async fn zo_config() -> impl IntoResponse {
 
     axum::Json(ConfigResponse {
         version: config::VERSION.to_string(),
+        pcplab_fork: openobserve_pcplab::build_metadata::get(),
         commit_hash: config::COMMIT_HASH.to_string(),
         build_date: config::BUILD_DATE.to_string(),
         build_type: build_type.to_string(),

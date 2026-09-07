@@ -20,6 +20,15 @@ COPY . /openobserve
 COPY --from=webbuilder /web/dist web/dist
 RUN mkdir -p /openobserve/target/release/
 
+ARG PCPLAB_RELEASE
+ARG PCPLAB_FORK_SHA
+ARG PCPLAB_BUILD_TIMESTAMP
+ARG PCPLAB_SOURCE_URL
+ENV PCPLAB_RELEASE=${PCPLAB_RELEASE} \
+  PCPLAB_FORK_SHA=${PCPLAB_FORK_SHA} \
+  PCPLAB_BUILD_TIMESTAMP=${PCPLAB_BUILD_TIMESTAMP} \
+  PCPLAB_SOURCE_URL=${PCPLAB_SOURCE_URL}
+
 # RUN cargo build --release
 ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
   CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
