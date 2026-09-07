@@ -75,6 +75,7 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: "0"
       ZO_META_STORE: sqlite
       ZO_DATA_DIR: /tmp/openobserve-core
+      ZO_SSRF_ALLOW_LOOPBACK: "false"
     steps:
       - name: Free runner disk space
         run: |
@@ -84,6 +85,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2

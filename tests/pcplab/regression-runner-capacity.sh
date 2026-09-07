@@ -19,6 +19,8 @@ core_job=$(awk '
 [[ -n "$core_job" ]] || fail 'pcplab_regression_core job is missing'
 grep -Fq 'CARGO_PROFILE_TEST_DEBUG: "0"' <<<"$core_job" \
   || fail 'core regression does not disable test-profile debug artifacts'
+grep -Fq 'ZO_SSRF_ALLOW_LOOPBACK: "false"' <<<"$core_job" \
+  || fail 'core regression does not restore the production SSRF default for unit tests'
 grep -Fq -- '- name: Free runner disk space' <<<"$core_job" \
   || fail 'core regression does not free runner disk before compilation'
 grep -Fq 'sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost' <<<"$core_job" \
@@ -30,5 +32,7 @@ cleanup_line=$(grep -nF -- '- name: Free runner disk space' <<<"$core_job" | cut
 checkout_line=$(grep -nF -- '- name: Checkout repository' <<<"$core_job" | cut -d: -f1)
 [[ "$cleanup_line" -lt "$checkout_line" ]] \
   || fail 'core regression disk cleanup must run before checkout and cache restore'
+grep -Fq 'fetch-depth: 0' <<<"$core_job" \
+  || fail 'core regression checkout does not provide tags required by GIT_VERSION tests'
 
 printf 'regression-runner-capacity-test: PASS\n'
