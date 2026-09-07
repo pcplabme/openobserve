@@ -48,10 +48,11 @@ remains authoritative after future syncs.
   validation under `tests/db-testing`, and the frontend has Vitest unit tests
   plus Playwright/Cypress-style suites. Existing workflows already separate
   unit, database, API, and UI/E2E concerns.
-- Release tags trigger `.github/workflows/release.yml`. The current build
-  metadata uses the nearest Git tag plus the fork commit and build date; it does
-  not yet expose all PCPLAB/upstream provenance in-product. Issue #10 owns the
-  remaining About/Legal/Source surface and release-workflow integration.
+- PCPLAB release tags trigger `.github/workflows/pcplab-release.yml`. The
+  company-owned build metadata crate validates the release claim against the
+  root package version and `.fork/upstream.env`, then exposes immutable
+  fork/upstream provenance through the authenticated configuration and About
+  page. The anonymous `/config` bootstrap deliberately excludes this detail.
 - `src/enterprise/o2_dex`, `o2_openfga`, `o2_enterprise`, and `o2_ratelimit` are
   dependency-resolution stubs for private crates. The `src/audit` crate is
   compiled only with the `enterprise` feature and depends on private audit
@@ -408,6 +409,7 @@ must preserve:
 
 ```text
 Distribution
+Release channel
 Company release
 Fork SHA
 Upstream source version
@@ -416,6 +418,7 @@ Upstream base type
 Upstream security patch SHA(s), when applicable
 Upstream security advisory identifier(s), when applicable
 Build timestamp
+Immutable Docker image identity
 License
 Corresponding Source location
 ```
@@ -439,13 +442,96 @@ scripts/fork-release-metadata.sh "$release" > "$metadata_file" &&
 ```
 
 The local manifest is pre-push validation evidence, not the release artifact.
-The build job must regenerate it using the artifact's actual build timestamp and
-retain it beside checksums and source for the same immutable tag. Do not retag a
-failed release; increment the PCPLAB revision. Issue #10 still
-must wire this manifest into release artifacts and the product's prominent
-About/Legal/Source mechanism, define historical source retention/access, and
-complete legal review. Preserve `LICENSE` and all upstream notices. Do not copy,
-reverse engineer, or imply use of proprietary OpenObserve Enterprise code.
+The build job regenerates it using the artifact's actual build timestamp and
+passes the same values as compile-time inputs to both architecture builds. The
+image smoke test compares authenticated `pcplab_fork` runtime metadata and OCI
+labels field-for-field with that manifest before publication. Do not retag a
+failed release; increment the PCPLAB revision. Preserve `LICENSE` and all
+upstream notices. Do not copy, reverse engineer, or imply use of proprietary
+OpenObserve Enterprise code.
+
+### In-product source and attribution
+
+`openobserve-pcplab::build_metadata` is the authority for metadata compiled
+into the server. A release build must supply all four values below; supplying a
+partial set fails the build:
+
+```text
+PCPLAB_RELEASE
+PCPLAB_FORK_SHA
+PCPLAB_BUILD_TIMESTAMP
+PCPLAB_SOURCE_URL
+```
+
+The release/tag version, root `Cargo.toml`, and `UPSTREAM_SOURCE_VERSION` must
+agree. The fork SHA must be a full lowercase SHA, the source URL must be the
+commit-pinned `https://github.com/pcplabme/openobserve/tree/<fork-sha>`, and the
+timestamp must be UTC. An ordinary developer build is explicitly identified as
+`development`; it never fabricates a company release or build timestamp.
+
+Authenticated users can inspect these values on the About page. This surface
+identifies the modified PCPLAB distribution, its release channel, fork commit,
+upstream version/base/type and any recorded security fixes, AGPL-3.0 license,
+build time, immutable `patcharp/openobserve:<version>` identity, and exact
+source link. Exact fork provenance is intentionally not
+added to unauthenticated `/config`.
+
+### Historical source retention and reconstruction
+
+The GitHub repository is the durable source authority. Every published release
+must have an immutable annotated Git tag whose commit remains reachable. The
+release workflow stages a draft GitHub Release containing `provenance.json`,
+`SOURCE.md`, `SHA256SUMS`, image digests, per-architecture SBOMs, vulnerability
+reports, and smoke evidence before publishing the immutable Docker manifest,
+then makes that release public only after Docker verification succeeds. This
+keeps durable evidence available even if publication/finalization is
+interrupted. GitHub Actions artifacts are convenience copies with finite
+retention; they are not the historical record.
+
+An interrupted release may leave a draft GitHub Release as durable evidence.
+Treat that draft as immutable: diagnose the failed run, delete the stale draft
+manually only after preserving its evidence, and retry under a newly incremented
+PCPLAB revision. Never overwrite its assets or move the original tag.
+
+Reconstruct a historical release without consulting current `main`:
+
+```bash
+release=v0.93.0-pcplab.1
+git fetch origin "refs/tags/$release:refs/tags/$release"
+[ "$(git cat-file -t "refs/tags/$release")" = tag ]
+git switch --detach "$release"
+scripts/fork-release-metadata.sh "$release" > provenance.json
+jq -e . provenance.json
+```
+
+The retained GitHub Release `provenance.json` is the authoritative artifact
+record. Regenerating it without the original `BUILD_TIMESTAMP` re-proves source
+identity but is not expected to be byte-for-byte identical.
+
+The retained `fork_sha` identifies the exact modified source and
+`upstream_base_sha` identifies its adopted OpenObserve base. Fetch that upstream
+commit when a source comparison or rebuild needs it. A release is not eligible
+for production if the tag, source URL, provenance manifest, GitHub Release, or
+immutable `patcharp/openobserve:<version>` image cannot be resolved.
+
+### Dependency license handling
+
+Every new Rust or JavaScript dependency requires review in the changing PR:
+record its package/version, source, declared license, compatibility with
+AGPL-3.0 distribution, and any notice/source obligations. `cargo deny`, Rust
+advisory checks, JavaScript license/dependency checks, and generated SBOMs are
+enforcement/evidence; they do not replace human review of unusual, unknown, or
+non-standard licenses. The Issue #10 implementation adds no new third-party
+package or version: its Rust crate reuses workspace `serde` only.
+
+### Required immutable-tag ruleset
+
+Before closing the compliance issue or publishing the first production
+release, activate a tag ruleset targeting `refs/tags/v*-pcplab.*` that blocks
+deletion and non-fast-forward updates. Do not grant routine bypass authority.
+Create release tags only after the required `main` checks have succeeded and
+after local tag/provenance validation; GitHub Actions must never create or move
+the release tag itself.
 
 ## Required GitHub ruleset for `main`
 
@@ -560,17 +646,22 @@ the actual check names have passed on `main` at least once.
 - [ ] Tag matches `v<upstream>-pcplab.<revision>[.rc.<revision>]` and is immutable.
 - [ ] Source version matches root `Cargo.toml`; upstream tag claim was verified.
 - [ ] Provenance JSON generated during the actual artifact build and retained with checksums.
+- [ ] Runtime `pcplab_fork`, provenance JSON, and OCI labels agree exactly.
 - [ ] Exact corresponding source for the fork SHA is retained and accessible.
+- [ ] GitHub Release retains provenance, source pointer, digests, SBOMs, scans, smoke evidence, and checksums.
+- [ ] Draft GitHub Release evidence was staged before Docker publication and finalized afterward.
+- [ ] Immutable Docker tag resolves to the validated amd64/arm64 child digests.
 - [ ] Upstream notices and AGPL-3.0 license remain present.
 - [ ] New dependency licenses and source obligations were reviewed.
+- [ ] Release tag protection ruleset is active and has no routine bypass.
 - [ ] Deployment record links release tag, fork SHA, upstream base/fix SHAs, and environment.
 
 ## Known dependencies and follow-up work
 
 - Issue #3 owns the executable PCPLAB contract suite, company CI workflows,
   and Docker release pipeline described in `docs/ci-regression-gate.md`.
-- Issue #10: add in-product fork attribution/source access and integrate the
-  provenance manifest into release artifacts and historical source retention.
+- Issue #10 closes only after the implementation PR is merged and a real RC
+  proves the in-product, OCI, Docker, GitHub Release, and retention chain.
 - Repository administration: activate the documented `main` ruleset after the
   required checks exist and their names are verified.
 - Automatic sync PR creation is intentionally deferred. The drift workflow

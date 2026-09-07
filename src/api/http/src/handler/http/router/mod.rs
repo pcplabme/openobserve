@@ -1764,6 +1764,10 @@ mod tests {
             "authenticated config carries the version"
         );
         assert!(
+            payload.get("pcplab_fork").is_some(),
+            "authenticated config carries exact PCPLAB fork provenance"
+        );
+        assert!(
             payload.get("instance").is_none(),
             "the instance id is a fingerprinting handle no UI consumer reads; it must not be served"
         );

@@ -83,6 +83,7 @@ openobserve-core.workspace = true
 openobserve-synthetics.workspace = true
 openobserve-api-common.workspace = true
 openobserve-node.workspace = true
+openobserve-pcplab.workspace = true
 openobserve-org-storage.workspace = true
 openobserve-sourcemaps.workspace = true
 opentelemetry.workspace = true

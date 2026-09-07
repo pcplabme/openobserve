@@ -85,6 +85,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
         <!-- ── Info Cards Grid ─────────────────────────────────────── -->
         <div class="grid grid-cols-1 gap-4">
+          <!-- PCPLAB fork notice (only when backend supplies pcplab_fork) -->
+          <PcplabForkNotice />
+
           <!-- Open Source Libraries -->
           <div class="bg-card-glass-bg rounded-default flex flex-col gap-y-2 p-4">
             <div class="flex items-center gap-3">
@@ -466,6 +469,7 @@ import OIcon from "@/lib/core/Icon/OIcon.vue";
 import OSpinner from "@/lib/feedback/Spinner/OSpinner.vue";
 import OBanner from "@/lib/feedback/Banner/OBanner.vue";
 import OText from "@/lib/core/Typography/OText.vue";
+import PcplabForkNotice from "@/pcplab/components/PcplabForkNotice.vue";
 import { toast } from "@/lib/feedback/Toast/useToast";
 
 export default defineComponent({
@@ -477,6 +481,7 @@ export default defineComponent({
     OSpinner,
     OBanner,
     OText,
+    PcplabForkNotice,
   },
   setup() {
     const store = useStore();

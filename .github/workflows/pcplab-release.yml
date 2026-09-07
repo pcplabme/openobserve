@@ -23,6 +23,11 @@ jobs:
     outputs:
       tag_sha: ${{ steps.release.outputs.tag_sha }}
       version: ${{ steps.release.outputs.version }}
+      company_release: ${{ steps.release.outputs.company_release }}
+      release_channel: ${{ steps.release.outputs.release_channel }}
+      fork_sha: ${{ steps.release.outputs.fork_sha }}
+      build_timestamp: ${{ steps.release.outputs.build_timestamp }}
+      source_url: ${{ steps.release.outputs.source_url }}
       labels: ${{ steps.labels.outputs.labels }}
     steps:
       - name: Checkout tagged source
@@ -69,6 +74,11 @@ jobs:
           done
           echo "tag_sha=$tag_sha" >>"$GITHUB_OUTPUT"
           echo "version=${RELEASE_TAG#v}" >>"$GITHUB_OUTPUT"
+          echo "company_release=$(jq -r .company_release provenance.json)" >>"$GITHUB_OUTPUT"
+          echo "release_channel=$(jq -r .release_channel provenance.json)" >>"$GITHUB_OUTPUT"
+          echo "fork_sha=$(jq -r .fork_sha provenance.json)" >>"$GITHUB_OUTPUT"
+          echo "build_timestamp=$(jq -r .build_timestamp provenance.json)" >>"$GITHUB_OUTPUT"
+          echo "source_url=$(jq -r .source provenance.json)" >>"$GITHUB_OUTPUT"
 
       - name: Prepare OCI labels
         id: labels
@@ -76,7 +86,7 @@ jobs:
           set -euo pipefail
           {
             echo 'labels<<PCPLAB_LABELS'
-            echo 'org.opencontainers.image.title=openobserve'
+            echo 'org.opencontainers.image.title=PCPLAB OpenObserve'
             echo 'org.opencontainers.image.source=https://github.com/pcplabme/openobserve'
             echo "org.opencontainers.image.revision=$(jq -r .fork_sha provenance.json)"
             echo "org.opencontainers.image.version=$(jq -r .company_release provenance.json | sed 's/^v//')"
@@ -84,6 +94,9 @@ jobs:
             echo 'org.opencontainers.image.licenses=AGPL-3.0'
             echo 'org.opencontainers.image.vendor=PCPLAB'
             echo "ai.pcplab.release=$(jq -r .company_release provenance.json)"
+            echo "ai.pcplab.release_channel=$(jq -r .release_channel provenance.json)"
+            echo "ai.pcplab.source=$(jq -r .source provenance.json)"
+            echo "ai.pcplab.docker_image=$(jq -r .docker_image provenance.json)"
             echo "ai.pcplab.fork.sha=$(jq -r .fork_sha provenance.json)"
             echo "ai.pcplab.upstream.source_version=$(jq -r .upstream_source_version provenance.json)"
             echo "ai.pcplab.upstream.base_sha=$(jq -r .upstream_base_sha provenance.json)"
@@ -167,6 +180,17 @@ jobs:
         with:
           ref: ${{ needs.pcplab_release_validate.outputs.tag_sha }}
 
+      - name: Restore and verify the exact annotated release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          TAG_SHA: ${{ needs.pcplab_release_validate.outputs.tag_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          [ "$(git cat-file -t "refs/tags/$RELEASE_TAG")" = tag ]
+          [ "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$TAG_SHA" ]
+          [ "$(git describe --tags --exact-match "$TAG_SHA")" = "$RELEASE_TAG" ]
+
       - name: Download provenance
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -191,6 +215,11 @@ jobs:
           file: ${{ matrix.dockerfile }}
           platforms: ${{ matrix.platform }}
           labels: ${{ needs.pcplab_release_validate.outputs.labels }}
+          build-args: |
+            PCPLAB_RELEASE=${{ needs.pcplab_release_validate.outputs.company_release }}
+            PCPLAB_FORK_SHA=${{ needs.pcplab_release_validate.outputs.fork_sha }}
+            PCPLAB_BUILD_TIMESTAMP=${{ needs.pcplab_release_validate.outputs.build_timestamp }}
+            PCPLAB_SOURCE_URL=${{ needs.pcplab_release_validate.outputs.source_url }}
           outputs: type=image,name=docker.io/${{ env.IMAGE_REPOSITORY }},push-by-digest=true,name-canonical=true,push=true
           provenance: mode=max
           sbom: true
@@ -207,13 +236,28 @@ jobs:
       - name: Verify provenance labels
         env:
           ARCH: ${{ matrix.arch }}
-          RELEASE_TAG: ${{ github.ref_name }}
-          TAG_SHA: ${{ needs.pcplab_release_validate.outputs.tag_sha }}
         run: |
           set -euo pipefail
           docker inspect pcplab-smoke:"$ARCH" >image-inspect.json
-          jq -e --arg release "$RELEASE_TAG" --arg sha "$TAG_SHA" \
-            '.[0].Config.Labels["ai.pcplab.release"] == $release and .[0].Config.Labels["org.opencontainers.image.revision"] == $sha' \
+          jq -e --slurpfile provenance provenance.json \
+            '.[0].Config.Labels as $labels | $provenance[0] as $p |
+             $labels["org.opencontainers.image.title"] == "PCPLAB OpenObserve" and
+             $labels["org.opencontainers.image.source"] == "https://github.com/pcplabme/openobserve" and
+             $labels["org.opencontainers.image.revision"] == $p.fork_sha and
+             $labels["org.opencontainers.image.version"] == ($p.company_release | ltrimstr("v")) and
+             $labels["org.opencontainers.image.created"] == $p.build_timestamp and
+             $labels["org.opencontainers.image.licenses"] == $p.license and
+             $labels["org.opencontainers.image.vendor"] == "PCPLAB" and
+             $labels["ai.pcplab.release"] == $p.company_release and
+             $labels["ai.pcplab.release_channel"] == $p.release_channel and
+             $labels["ai.pcplab.source"] == $p.source and
+             $labels["ai.pcplab.docker_image"] == $p.docker_image and
+             $labels["ai.pcplab.fork.sha"] == $p.fork_sha and
+             $labels["ai.pcplab.upstream.source_version"] == $p.upstream_source_version and
+             $labels["ai.pcplab.upstream.base_sha"] == $p.upstream_base_sha and
+             $labels["ai.pcplab.upstream.base_type"] == $p.upstream_base_type and
+             $labels["ai.pcplab.upstream.security_patch_shas"] == $p.upstream_security_patch_shas and
+             $labels["ai.pcplab.upstream.security_advisories"] == $p.upstream_security_advisories' \
             image-inspect.json >/dev/null
 
       - name: Smoke-test produced image
@@ -238,6 +282,13 @@ jobs:
             -e ZO_FILE_PUSH_INTERVAL=1 \
             pcplab-smoke:"$ARCH"
           bash scripts/pcplab-product-smoke.sh
+          auth=$(printf '%s' "${ZO_ROOT_USER_EMAIL}:${ZO_ROOT_USER_PASSWORD}" | base64 | tr -d '\r\n')
+          curl --silent --show-error --fail-with-body \
+            -H "Authorization: Basic ${auth}" \
+            http://localhost:5080/api/default/config >runtime-config.json
+          jq -e --slurpfile provenance provenance.json \
+            '.pcplab_fork == $provenance[0]' runtime-config.json >/dev/null
+          mv runtime-config.json "runtime-config-${ARCH}.json"
           [ "$(docker inspect -f '{{.State.Running}}' pcplab-release-smoke)" = true ]
 
       - name: Capture smoke diagnostics
@@ -285,6 +336,7 @@ jobs:
           path: |
             digests
             smoke-${{ matrix.arch }}.log
+            runtime-config-${{ matrix.arch }}.json
             sbom-${{ matrix.arch }}.spdx.json
             trivy-${{ matrix.arch }}.sarif
           if-no-files-found: warn
@@ -296,6 +348,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: release-dockerhub
+    permissions:
+      contents: write
     steps:
       - name: Download architecture evidence
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -303,6 +357,94 @@ jobs:
           pattern: pcplab-release-*
           path: release-evidence
           merge-multiple: true
+
+      - name: Validate complete release evidence
+        run: |
+          set -euo pipefail
+          required=(
+            provenance.json
+            runtime-config-amd64.json runtime-config-arm64.json
+            sbom-amd64.spdx.json sbom-arm64.spdx.json
+            trivy-amd64.sarif trivy-arm64.sarif
+            smoke-amd64.log smoke-arm64.log
+          )
+          for file in "${required[@]}"; do
+            [ -f "release-evidence/$file" ] || {
+              echo "::error::Required release evidence is missing: $file"
+              exit 1
+            }
+          done
+          jq -e . release-evidence/provenance.json \
+            release-evidence/sbom-amd64.spdx.json release-evidence/sbom-arm64.spdx.json \
+            release-evidence/trivy-amd64.sarif release-evidence/trivy-arm64.sarif >/dev/null
+          for arch in amd64 arm64; do
+            jq -e --slurpfile provenance release-evidence/provenance.json \
+              '.pcplab_fork == $provenance[0]' \
+              "release-evidence/runtime-config-${arch}.json" >/dev/null
+          done
+
+      - name: Stage durable provenance and compliance evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_CHANNEL: ${{ needs.pcplab_release_validate.outputs.release_channel }}
+          VERSION: ${{ needs.pcplab_release_validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          set +e
+          release_lookup=$(gh release view "$RELEASE_TAG" 2>&1)
+          release_lookup_status=$?
+          set -e
+          if [ "$release_lookup_status" -eq 0 ]; then
+            echo "::error::GitHub Release already exists; immutable evidence will not be overwritten"
+            exit 1
+          elif ! grep -Fqi 'release not found' <<<"$release_lookup"; then
+            echo "::error::GitHub Release immutability check failed closed: $release_lookup"
+            exit 1
+          fi
+          mapfile -t digest_files < <(find release-evidence -path '*/digests/*' -type f | sort)
+          {
+            echo "docker.io/$IMAGE_REPOSITORY:$VERSION"
+            for file in "${digest_files[@]}"; do
+              echo "docker.io/$IMAGE_REPOSITORY@sha256:$(basename "$file")"
+            done
+          } >release-evidence/image-digests.txt
+          source_url=$(jq -er .source release-evidence/provenance.json)
+          {
+            echo '# Corresponding Source'
+            echo
+            echo "The exact source for \`$RELEASE_TAG\` is retained at:"
+            echo
+            echo "$source_url"
+            echo
+            echo 'This PCPLAB OpenObserve distribution is licensed under AGPL-3.0.'
+          } >release-evidence/SOURCE.md
+          (
+            cd release-evidence
+            find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 \
+              | sort -z \
+              | xargs -0 sha256sum >SHA256SUMS
+          )
+          {
+            echo "PCPLAB release $RELEASE_TAG"
+            echo
+            echo "Docker image: docker.io/$IMAGE_REPOSITORY:$VERSION"
+            echo "Corresponding source: $source_url"
+          } >release-notes.md
+          mapfile -d '' -t assets < <(find release-evidence -maxdepth 1 -type f -print0 | sort -z)
+          release_flags=(--draft --latest=false)
+          if [ "$RELEASE_CHANNEL" = release-candidate ]; then
+            release_flags+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" \
+            "${release_flags[@]}" \
+            --verify-tag \
+            --title "$RELEASE_TAG" \
+            --notes-file release-notes.md \
+            "${assets[@]}"
+          release_state=$(gh release view "$RELEASE_TAG" --json isDraft,tagName --jq '[.tagName, .isDraft] | @tsv')
+          [ "$release_state" = "$RELEASE_TAG"$'\ttrue' ]
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
@@ -361,8 +503,8 @@ jobs:
             exit 1
           fi
           # Publication occurs only after all source/platform and immutability
-          # validation. The only following operation is a read-only assertion
-          # that Docker Hub resolved the tag to both validated digests.
+          # validation. The Docker tag is never moved; the following Docker
+          # operation only asserts that it resolves to both validated digests.
           docker buildx imagetools create \
             -t "docker.io/$IMAGE_REPOSITORY:$VERSION" \
             "${source_by_arch[amd64]}" "${source_by_arch[arm64]}"
@@ -376,3 +518,14 @@ jobs:
               exit 1
             }
           done
+
+      - name: Finalize durable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release edit "$RELEASE_TAG" --draft=false
+          release_state=$(gh release view "$RELEASE_TAG" --json isDraft,tagName --jq '[.tagName, .isDraft] | @tsv')
+          [ "$release_state" = "$RELEASE_TAG"$'\tfalse' ]

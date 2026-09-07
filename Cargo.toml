@@ -299,6 +299,7 @@ members = [
     "src/report_server",
     "src/flight",
     "src/tantivy_utils",
+    "src/pcplab",
     "src/web",
 ]
 resolver = "2"
@@ -355,6 +356,7 @@ openobserve-api-pipelines = { path = "src/api/pipelines" }
 openobserve-api-search = { path = "src/api/search" }
 openobserve-jobs = { path = "src/jobs" }
 openobserve-mcp = { path = "src/mcp" }
+openobserve-pcplab = { path = "src/pcplab" }
 o2_dex = { path = "src/enterprise/o2_dex" }
 o2_enterprise = { path = "src/enterprise/o2_enterprise", default-features = false }
 o2_openfga = { path = "src/enterprise/o2_openfga" }

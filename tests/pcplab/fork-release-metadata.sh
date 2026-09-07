@@ -108,10 +108,11 @@ make_release() {
 # Valid tag grammar + valid metadata: must emit parseable provenance JSON.
 # -------------------------------------------------------------------------
 make_release v0.93.0-pcplab.1 0.93.0 main-development
-valid_output=$(expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' SOURCE_URL='https://example.invalid/source' \
+valid_output=$(expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' \
   "$metadata_script" v0.93.0-pcplab.1)
 jq -e . >/dev/null <<<"$valid_output" || fail "valid release must emit valid JSON"
 assert_contains "$valid_output" '"distribution": "PCPLAB OpenObserve OSS fork"'
+assert_contains "$valid_output" '"release_channel": "release"'
 assert_contains "$valid_output" '"company_release": "v0.93.0-pcplab.1"'
 assert_contains "$valid_output" '"fork_sha":'
 assert_contains "$valid_output" '"upstream_source_version": "0.93.0"'
@@ -119,12 +120,14 @@ assert_contains "$valid_output" '"upstream_base_sha":'
 assert_contains "$valid_output" '"upstream_base_type": "main-development"'
 assert_contains "$valid_output" '"upstream_security_advisories": ""'
 assert_contains "$valid_output" '"build_timestamp": "2026-08-26T00:00:00Z"'
-assert_contains "$valid_output" '"source": "https://example.invalid/source"'
+assert_contains "$valid_output" '"docker_image": "patcharp/openobserve:0.93.0-pcplab.1"'
+assert_contains "$valid_output" '"source": "https://github.com/pcplabme/openobserve/tree/'
 assert_contains "$valid_output" '"license": "AGPL-3.0"'
 
 # Release-candidate grammar must also be accepted.
 make_release v0.93.0-pcplab.2.rc.1 0.93.0 main-development
-expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' "$metadata_script" v0.93.0-pcplab.2.rc.1 >/dev/null
+rc_output=$(expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' "$metadata_script" v0.93.0-pcplab.2.rc.1)
+assert_contains "$rc_output" '"release_channel": "release-candidate"'
 
 # -------------------------------------------------------------------------
 # Rejected tag grammar: wrong prefix, bad revision, prerelease must be rc.
@@ -132,12 +135,18 @@ expect_pass env BUILD_TIMESTAMP='2026-08-26T00:00:00Z' "$metadata_script" v0.93.
 expect_fail 'release tag must match' "$metadata_script" 'not-a-tag'
 expect_fail 'release tag must match' "$metadata_script" '0.93.0-pcplab.1'
 expect_fail 'release tag must match' "$metadata_script" 'v0.93.0-pcplab.0'
+expect_fail 'release tag must match' "$metadata_script" 'v0.93.0-pcplab.01'
+expect_fail 'release tag must match' "$metadata_script" 'v0.93.0-pcplab.1+build'
 expect_fail 'release tag must match' "$metadata_script" 'v0.93.0-pcplab.1.beta.1'
 expect_fail 'release tag must match' "$metadata_script" 'v0.93.0-pcplab'
 
 # A real release tag that has never been created locally must die because
 # `git rev-parse --verify` rejects it.
 expect_fail 'does not exist locally' "$metadata_script" v9.99.99-pcplab.1
+expect_fail 'BUILD_TIMESTAMP is not a valid UTC date/time' env BUILD_TIMESTAMP='2026-02-30T00:00:00Z' \
+  "$metadata_script" v0.93.0-pcplab.1
+expect_fail 'SOURCE_URL must identify the exact fork commit' env SOURCE_URL='https://github.com/pcplabme/openobserve/tree/main' \
+  "$metadata_script" v0.93.0-pcplab.1
 
 # -------------------------------------------------------------------------
 # Metadata/version mismatch: Cargo.toml version disagrees with metadata.

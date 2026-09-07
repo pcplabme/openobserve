@@ -7942,6 +7942,7 @@ dependencies = [
  "openobserve-core",
  "openobserve-node",
  "openobserve-org-storage",
+ "openobserve-pcplab",
  "openobserve-sourcemaps",
  "openobserve-synthetics",
  "opentelemetry",
@@ -8259,6 +8260,13 @@ dependencies = [
  "object_store",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "openobserve-pcplab"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
