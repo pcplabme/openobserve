@@ -34,5 +34,9 @@ checkout_line=$(grep -nF -- '- name: Checkout repository' <<<"$core_job" | cut -
   || fail 'core regression disk cleanup must run before checkout and cache restore'
 grep -Fq 'fetch-depth: 0' <<<"$core_job" \
   || fail 'core regression checkout does not provide tags required by GIT_VERSION tests'
+grep -Fq 'git fetch --force --tags https://github.com/openobserve/openobserve.git' <<<"$core_job" \
+  || fail 'core regression does not fetch authoritative upstream tags for GIT_VERSION'
+grep -Fq 'git describe --tags --abbrev=0' <<<"$core_job" \
+  || fail 'core regression does not fail fast when no version tag is reachable'
 
 printf 'regression-runner-capacity-test: PASS\n'
